@@ -1079,6 +1079,111 @@ button {
   color: var(--text-secondary);
 }
 
+.station-head-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.howto-pill {
+  padding: 6px 10px;
+  border-radius: 9px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  font-size: 0.74rem;
+  font-weight: 800;
+  color: var(--text);
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-top: 3px;
+}
+
+.howto-pill.is-new {
+  background: var(--teal-soft);
+  color: var(--teal);
+  border-color: hsla(189, 76%, 47%, 0.35);
+}
+
+.first-time-banner {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--surface-1);
+  border: 1px solid hsla(189, 76%, 47%, 0.32);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 0.79rem;
+}
+
+.first-time-banner strong {
+  display: block;
+  color: var(--teal);
+  font-size: 0.73rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 2px;
+}
+
+.form-diagram-box {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.form-diagram-svg {
+  width: 100%;
+  max-width: 280px;
+  height: auto;
+  display: block;
+}
+
+.feel-avoid-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.feel-box {
+  padding: 9px 11px;
+  border-radius: 11px;
+  background: var(--success-soft);
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--success);
+}
+
+.avoid-box {
+  padding: 9px 11px;
+  border-radius: 11px;
+  background: var(--warning-soft);
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--warning);
+}
+
+.diagnosis-card {
+  background: var(--surface-1);
+  border: 1px solid var(--border-strong);
+  border-radius: 15px;
+  padding: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.diagnosis-cause {
+  font-size: 0.81rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  line-height: 1.38;
+}
+
 /* ==========================================================================
    Toast
    ========================================================================== */

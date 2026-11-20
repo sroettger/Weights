@@ -13,6 +13,7 @@ import {
   rerouteBusyStation,
   applyPainProtection,
   compressRemainingSession,
+  applyFormAdjustment,
   completeCurrentStep,
   finalizeSessionToPlan,
 } from './planner.js';
@@ -27,14 +28,16 @@ import {
   renderPainModalBody,
   renderPlanModalBody,
   renderWearableModalBody,
+  renderFormModalBody,
 } from './ui.js';
 
 const state = loadState();
 
-let activeModal = null; // 'goal' | 'floor' | 'pain' | 'plan' | 'wearable'
+let activeModal = null; // 'goal' | 'floor' | 'pain' | 'plan' | 'wearable' | 'form'
 let editFloorPins = false;
 let draggingMachineId = null;
 let checkinDraft = { open: false, stepId: null, reps: 5 };
+let formUi = { tab: 'guide', machineId: null, query: '', rawText: '' };
 let toastTimer = null;
 
 const mainEl = document.getElementById('app-main');
@@ -208,6 +211,8 @@ function refreshOpenModal() {
     modalBodyEl.innerHTML = renderPlanModalBody(state, sess);
   } else if (activeModal === 'wearable') {
     modalBodyEl.innerHTML = renderWearableModalBody(state, wearable.getSnapshot());
+  } else if (activeModal === 'form') {
+    modalBodyEl.innerHTML = renderFormModalBody(state, sess, formUi);
   }
 }
 
@@ -259,6 +264,98 @@ document.addEventListener('click', (event) => {
     case 'open-wearable-modal':
       openModal('wearable', 'Heart Rate Watch');
       break;
+    case 'open-form-modal': {
+      const curSt = getActiveStep(sess);
+      formUi = {
+        tab: btn.dataset.tab || 'guide',
+        machineId: curSt?.stationId || 'm_ab_crunch',
+        query: '',
+        rawText: '',
+      };
+      openModal('form', 'Machine Setup & Form Coach');
+      break;
+    }
+    case 'set-form-tab': {
+      formUi.tab = btn.dataset.tab || 'guide';
+      refreshOpenModal();
+      break;
+    }
+    case 'select-form-issue': {
+      formUi.query = btn.dataset.issue || '';
+      formUi.rawText = '';
+      refreshOpenModal();
+      break;
+    }
+    case 'confirm-guide-seen': {
+      const mId = btn.dataset.machineId || formUi.machineId;
+      if (mId) {
+        if (!state.athlete.formNotes) state.athlete.formNotes = {};
+        state.athlete.formNotes[mId] = {
+          ...(state.athlete.formNotes[mId] || {}),
+          seenGuide: true,
+        };
+        saveState(state);
+      }
+      closeModal();
+      renderStageOnly();
+      break;
+    }
+    case 'clear-pinned-cue': {
+      const mId = btn.dataset.machineId || formUi.machineId;
+      if (mId && state.athlete.formNotes?.[mId]) {
+        delete state.athlete.formNotes[mId].pinnedCue;
+        const curSt = getActiveStep(sess);
+        if (curSt && curSt.stationId === mId) {
+          const m = getMachineById(mId);
+          curSt.cue = m?.cue || '';
+          curSt.liveNote = '';
+        }
+        saveState(state);
+        refreshOpenModal();
+        renderStageOnly();
+      }
+      break;
+    }
+    case 'apply-form-fix': {
+      const cue = btn.dataset.cue || '';
+      const dropLoad = btn.dataset.drop === 'true';
+      // Ensure we apply to whichever machine is selected in formUi
+      const curSt = getActiveStep(sess);
+      if (curSt && (!formUi.machineId || formUi.machineId === curSt.stationId)) {
+        const msg = applyFormAdjustment(sess, state.athlete, { pinCue: cue, dropLoad }, state.floorOverrides);
+        checkinDraft.open = false;
+        saveState(state);
+        closeModal();
+        renderAll();
+        showToast(msg);
+      } else if (formUi.machineId) {
+        if (!state.athlete.formNotes) state.athlete.formNotes = {};
+        state.athlete.formNotes[formUi.machineId] = {
+          ...(state.athlete.formNotes[formUi.machineId] || {}),
+          seenGuide: true,
+          pinnedCue: cue,
+        };
+        saveState(state);
+        closeModal();
+        showToast('Cue saved for station');
+      }
+      break;
+    }
+    case 'apply-form-swap': {
+      const swapToId = btn.dataset.swapId;
+      const msg = applyFormAdjustment(
+        sess,
+        state.athlete,
+        { swapToId, rememberSwap: true },
+        state.floorOverrides
+      );
+      checkinDraft.open = false;
+      saveState(state);
+      closeModal();
+      renderAll();
+      showToast(msg);
+      break;
+    }
     case 'close-modal':
       closeModal();
       break;
@@ -647,6 +744,16 @@ modalBodyEl.addEventListener('submit', (event) => {
     return;
   }
 
+  if (event.target.id === 'form-issue-form') {
+    const raw = String(fd.get('issueText') || '').trim();
+    if (raw) {
+      formUi.rawText = raw;
+      formUi.query = raw;
+      refreshOpenModal();
+    }
+    return;
+  }
+
   if (event.target.id === 'google-health-form') {
     const clientId = String(fd.get('clientId') || '').trim();
     state.wearable.googleHealthClientId = clientId;
@@ -659,6 +766,15 @@ modalBodyEl.addEventListener('submit', (event) => {
       clientId,
       window.location.origin + window.location.pathname
     );
+  }
+});
+
+modalBodyEl.addEventListener('change', (event) => {
+  if (event.target.id === 'form-station-select') {
+    formUi.machineId = event.target.value;
+    formUi.query = '';
+    formUi.rawText = '';
+    refreshOpenModal();
   }
 });
 

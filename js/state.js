@@ -67,6 +67,7 @@ export function createDefaultState(now = Date.now()) {
       lastWorkoutAt: now - 3 * day,
       lastSplitId: 'lower_push',
       jointFlags: {},
+      formNotes: {},
       mesocycle: {
         week: 1,
         sessionInWeek: 2,
@@ -147,6 +148,7 @@ export function loadState() {
         mesocycle: { ...defaults.athlete.mesocycle, ...(parsed.athlete?.mesocycle || {}) },
         lifts: { ...defaults.athlete.lifts, ...(parsed.athlete?.lifts || {}) },
         jointFlags: { ...(parsed.athlete?.jointFlags || {}) },
+        formNotes: { ...(parsed.athlete?.formNotes || {}) },
       },
       partner: {
         ...defaults.partner,

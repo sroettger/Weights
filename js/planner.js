@@ -36,7 +36,7 @@ export const SPLIT_TEMPLATES = {
     id: 'lower_push',
     name: 'Heavy Legs, Push & Core',
     short: 'Legs + Push',
-    candidates: ['m_leg_press', 'm_smith_incline', 'm_leg_ext', 'm_butterfly', 'm_calf', 'm_ab_crunch'],
+    candidates: ['m_leg_press', 'm_smith_incline', 'm_ab_crunch', 'm_leg_ext', 'm_calf', 'm_butterfly'],
     cardioMode: 'zone2',
   },
   full_force_vo2: {
@@ -328,7 +328,8 @@ export function createDynamicSession(state, options = {}) {
 
   for (const id of candidateIds) {
     if (chosenMachines.length >= maxLiftCount) break;
-    let m = getMachineById(id);
+    const prefSwap = athlete.formNotes?.[id]?.preferSwapId;
+    let m = getMachineById(prefSwap || id) || getMachineById(id);
     if (!m) continue;
 
     const flaggedJoint = isJointFlagActive(athlete, m, now);
@@ -364,7 +365,7 @@ export function createDynamicSession(state, options = {}) {
     durationSec: warmupMin * 60,
     hrBand: z12,
     setup: warmupMachine.setup,
-    cue: `5 min progressive ramp (${z12.min}–${z12.max} bpm) + shoulder/hip circles`,
+    cue: athlete.formNotes?.[warmupMachine.id]?.pinnedCue || `5 min progressive ramp (${z12.min}–${z12.max} bpm) + shoulder/hip circles`,
     done: false,
   });
 
@@ -374,6 +375,7 @@ export function createDynamicSession(state, options = {}) {
     const rx = prescribeStation(m, athlete, readiness, { now });
     const sets = buildLiftSets(m, rx);
     const walkM = distanceMeters(prevMachine, m, floorOverrides);
+    const pinnedCue = athlete.formNotes?.[m.id]?.pinnedCue || '';
     steps.push({
       id: `step_lift_${idx}_${m.id}`,
       type: 'lift',
@@ -382,11 +384,11 @@ export function createDynamicSession(state, options = {}) {
       walkMeters: walkM,
       prevStationId: prevMachine.id,
       setup: m.setup,
-      cue: m.cue,
+      cue: pinnedCue || m.cue,
       pct1RM: rx.pct1RM,
       seedE1rm: rx.e1rm,
       sets,
-      liveNote: '',
+      liveNote: pinnedCue ? `Pinned cue: ${pinnedCue}` : '',
       done: false,
     });
     prevMachine = m;
@@ -755,6 +757,72 @@ export function compressRemainingSession(session) {
   const msg = `Time-saver: −${trimmedSets} accessory sets & tighter rest`;
   session.adaptations.push(msg);
   return msg;
+}
+
+/**
+ * Apply a form-coaching fix (pin personal cue, optionally drop 1 weight step, or swap to a better-fitting station).
+ */
+export function applyFormAdjustment(
+  session,
+  athlete,
+  { pinCue = '', dropLoad = false, swapToId = null, rememberSwap = false },
+  floorOverrides = {}
+) {
+  const step = getActiveStep(session);
+  if (!step) return null;
+  if (!athlete.formNotes) athlete.formNotes = {};
+
+  const origId = step.stationId;
+  const origMachine = getMachineById(origId);
+  const existingNote = athlete.formNotes[origId] || {};
+
+  if (swapToId) {
+    const sub = getMachineById(swapToId);
+    if (sub) {
+      athlete.formNotes[origId] = {
+        ...existingNote,
+        seenGuide: true,
+        ...(rememberSwap ? { preferSwapId: sub.id } : {}),
+      };
+      step.stationId = sub.id;
+      step.zoneCode = getZoneInfo(sub.zone).code;
+      step.setup = sub.setup;
+      step.cue = athlete.formNotes[sub.id]?.pinnedCue || sub.cue;
+      step.liveNote = '';
+      if (step.type === 'lift') {
+        const rx = prescribeStation(sub, athlete, session.readiness);
+        step.sets = buildLiftSets(sub, rx);
+      }
+      recomputeWalkDistances(session, floorOverrides);
+      session.phase = 'active';
+      const msg = `Swapped to ${sub.name}${rememberSwap ? ' (saved for future)' : ''}`;
+      session.adaptations.push(msg);
+      return msg;
+    }
+  }
+
+  if (pinCue) {
+    athlete.formNotes[origId] = {
+      ...existingNote,
+      seenGuide: true,
+      pinnedCue: pinCue,
+    };
+    step.cue = pinCue;
+    step.liveNote = `Form fix: ${pinCue}`;
+  }
+
+  if (dropLoad && step.type === 'lift' && origMachine && origMachine.loadType !== 'bodyweight') {
+    const inc = origMachine.stepKg || 2.5;
+    for (const s of step.sets) {
+      if (!s.done) {
+        s.weightKg = Math.max(inc, Math.round((s.weightKg - inc) * 10) / 10);
+      }
+    }
+    session.adaptations.push(`${origMachine.shortName}: −${inc} kg for clean form`);
+    return `Pinned cue & −${inc} kg for clean form`;
+  }
+
+  return 'Form cue pinned to station';
 }
 
 /**

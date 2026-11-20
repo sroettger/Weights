@@ -22,6 +22,11 @@ import {
   getActiveStep,
   getCurrentSetInfo,
 } from './planner.js';
+import {
+  getMachineGuide,
+  diagnoseMachineIssue,
+  renderFormDiagramSvg,
+} from './form-coach.js';
 import { WEARABLE_PRESETS } from './wearable.js';
 
 export function esc(str) {
@@ -184,6 +189,11 @@ function renderActiveStepStage(state, session, timerSnap, wearableSnap, checkinD
     `
     : '';
 
+  const guide = getMachineGuide(machine.id);
+  const isNewStation =
+    !state.athlete.lifts?.[machine.id] &&
+    !state.athlete.formNotes?.[machine.id]?.seenGuide;
+
   // Timed Guided Block (Warm-up or Cardio)
   if (step.type === 'warmup' || step.type === 'cardio') {
     const isRunningThis = timerSnap.running && timerSnap.mode === step.type;
@@ -202,9 +212,12 @@ function renderActiveStepStage(state, session, timerSnap, wearableSnap, checkinD
         </div>
 
         <div class="stage-body">
-          <div>
-            <h2 class="station-title">${esc(machine.name)}</h2>
-            <p class="station-setup">${esc(step.setup)}</p>
+          <div class="station-head-row">
+            <div>
+              <h2 class="station-title">${esc(machine.name)}</h2>
+              <p class="station-setup">${esc(step.setup)}</p>
+            </div>
+            <button type="button" class="howto-pill" data-action="open-form-modal" data-tab="guide">How to Use</button>
           </div>
 
           <div class="hero-panel is-rest">
@@ -248,8 +261,9 @@ function renderActiveStepStage(state, session, timerSnap, wearableSnap, checkinD
             `
           }
           <div class="quiet-actions">
-            <button type="button" class="quiet-btn" data-action="machine-busy">Machine Busy</button>
-            <button type="button" class="quiet-btn" data-action="open-pain-modal">Pain / Swap</button>
+            <button type="button" class="quiet-btn" data-action="machine-busy">Busy</button>
+            <button type="button" class="quiet-btn" data-action="open-form-modal" data-tab="fix">Form / Issue</button>
+            <button type="button" class="quiet-btn" data-action="open-pain-modal">Pain</button>
             <button type="button" class="quiet-btn" data-action="complete-timed-step">Skip</button>
           </div>
         </div>
@@ -274,8 +288,20 @@ function renderActiveStepStage(state, session, timerSnap, wearableSnap, checkinD
 
   const isCheckingIn = Boolean(checkinDraft.open && checkinDraft.stepId === step.id);
   const draftReps = isCheckingIn ? checkinDraft.reps : curSet.targetReps;
-
   const cueText = step.liveNote || step.cue;
+
+  const firstTimeHtml =
+    isNewStation && info.arrayIndex === 0 && !isCheckingIn
+      ? `
+      <div class="first-time-banner">
+        <div>
+          <strong>Before Set 1 · Machine Setup</strong>
+          <span>${esc(guide.pivot)}</span>
+        </div>
+        <button type="button" class="btn btn-secondary btn-sm" data-action="open-form-modal" data-tab="guide">Guide</button>
+      </div>
+    `
+      : '';
 
   return `
     <section class="stage">
@@ -287,10 +313,17 @@ function renderActiveStepStage(state, session, timerSnap, wearableSnap, checkinD
       </div>
 
       <div class="stage-body">
-        <div>
-          <h2 class="station-title">${esc(machine.name)}</h2>
-          <p class="station-setup">${esc(step.setup)}</p>
+        <div class="station-head-row">
+          <div>
+            <h2 class="station-title">${esc(machine.name)}</h2>
+            <p class="station-setup">${esc(step.setup)}</p>
+          </div>
+          <button type="button" class="howto-pill ${isNewStation ? 'is-new' : ''}" data-action="open-form-modal" data-tab="guide">
+            How to Use
+          </button>
         </div>
+
+        ${firstTimeHtml}
 
         <div class="hero-panel">
           ${
@@ -372,6 +405,9 @@ function renderActiveStepStage(state, session, timerSnap, wearableSnap, checkinD
                   <small>${info.isWarmup || info.isLastSetOfStep || machine.loadType === 'bodyweight' ? '+Rest' : `−${stepInc} ${unit} next`}</small>
                 </button>
               </div>
+              <button type="button" class="quiet-btn" style="align-self:center;" data-action="open-form-modal" data-tab="fix">
+                Wrong muscle / Form felt awkward?
+              </button>
             </div>
           `
             : `
@@ -380,8 +416,9 @@ function renderActiveStepStage(state, session, timerSnap, wearableSnap, checkinD
             </button>
             <div class="quiet-actions">
               <button type="button" class="quiet-btn" data-action="machine-busy">Busy</button>
+              <button type="button" class="quiet-btn" data-action="open-form-modal" data-tab="fix">Form / Issue</button>
               <button type="button" class="quiet-btn" data-action="open-pain-modal">Pain</button>
-              <button type="button" class="quiet-btn" data-action="compress-time">Short on Time</button>
+              <button type="button" class="quiet-btn" data-action="compress-time">−Time</button>
               <button type="button" class="quiet-btn" data-action="skip-step">Skip</button>
             </div>
           `
@@ -475,8 +512,10 @@ function renderRestStage(state, session, timerSnap, wearableSnap) {
           <button type="button" class="btn btn-secondary" data-action="timer-adjust" data-delta="30">+30s</button>
         </div>
         <div class="quiet-actions">
-          <button type="button" class="quiet-btn" data-action="machine-busy">Next Machine Busy</button>
-          <button type="button" class="quiet-btn" data-action="open-pain-modal">Pain / Swap</button>
+          <button type="button" class="quiet-btn" data-action="open-form-modal" data-tab="guide">How to Use</button>
+          <button type="button" class="quiet-btn" data-action="open-form-modal" data-tab="fix">Form Check</button>
+          <button type="button" class="quiet-btn" data-action="machine-busy">Busy</button>
+          <button type="button" class="quiet-btn" data-action="open-pain-modal">Pain</button>
         </div>
       </div>
     </section>
@@ -899,6 +938,157 @@ export function renderWearableModalBody(state, snap) {
           </div>
         </form>`
           : ''
+      }
+    </div>
+  `;
+}
+
+export function renderFormModalBody(state, session, formUi = {}) {
+  const step = getActiveStep(session);
+  const machineId = formUi.machineId || step?.stationId || 'm_ab_crunch';
+  const machine = getMachineById(machineId) || GYM_MACHINES[0];
+  const guide = getMachineGuide(machine.id);
+  const tab = formUi.tab || 'guide'; // 'guide' | 'fix'
+  const unit = state.settings.unit;
+  const inc = machine.stepKg || 2.5;
+  const pinnedCue = state.athlete.formNotes?.[machine.id]?.pinnedCue || '';
+
+  const diagnosis = formUi.query ? diagnoseMachineIssue(machine, formUi.query) : null;
+  const swapMachine = diagnosis?.swapId ? getMachineById(diagnosis.swapId) : null;
+
+  const stationPickerHtml = `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+      <select id="form-station-select" class="field-input" style="height:36px;font-size:0.82rem;">
+        ${GYM_MACHINES.map(
+          (m) => `<option value="${m.id}" ${m.id === machine.id ? 'selected' : ''}>${esc(m.name)}</option>`
+        ).join('')}
+      </select>
+      <div class="seg-row" style="flex-shrink:0;">
+        <button type="button" class="seg-btn ${tab === 'guide' ? 'is-active' : ''}" data-action="set-form-tab" data-tab="guide">How to Use</button>
+        <button type="button" class="seg-btn ${tab === 'fix' ? 'is-active' : ''}" data-action="set-form-tab" data-tab="fix">Form Check</button>
+      </div>
+    </div>
+  `;
+
+  if (tab === 'guide') {
+    return `
+      <div class="sheet-section" style="gap:12px;">
+        ${stationPickerHtml}
+
+        <div class="form-diagram-box">
+          ${renderFormDiagramSvg(machine)}
+        </div>
+
+        <div class="cue-line is-adapted">
+          <span><strong>Pivot:</strong> ${esc(guide.pivot)}</span>
+        </div>
+
+        <div class="list-card" style="flex-direction:column;align-items:flex-start;gap:6px;">
+          <span class="sheet-label">Execution Checklist</span>
+          <ol class="setup-steps">
+            ${guide.steps.map((s) => `<li>${esc(s)}</li>`).join('')}
+          </ol>
+        </div>
+
+        <div class="feel-avoid-grid">
+          <div class="feel-box">Feel: ${esc(guide.feel)}</div>
+          <div class="avoid-box">Avoid: ${esc(guide.avoid)}</div>
+        </div>
+
+        ${
+          pinnedCue
+            ? `
+            <div class="list-card">
+              <div>
+                <span class="sheet-label">Your Pinned Cue</span>
+                <div style="font-size:0.81rem;font-weight:700;">${esc(pinnedCue)}</div>
+              </div>
+              <button type="button" class="btn btn-secondary btn-sm" data-action="clear-pinned-cue" data-machine-id="${machine.id}">Clear</button>
+            </div>`
+            : ''
+        }
+
+        <div class="option-grid-2">
+          <button type="button" class="btn btn-secondary" data-action="set-form-tab" data-tab="fix">Feels Off? Troubleshoot</button>
+          <button type="button" class="btn btn-primary" data-action="confirm-guide-seen" data-machine-id="${machine.id}">Got It · Ready</button>
+        </div>
+      </div>
+    `;
+  }
+
+  // Troubleshoot / Form Check Tab
+  return `
+    <div class="sheet-section" style="gap:12px;">
+      ${stationPickerHtml}
+
+      <div class="sheet-section">
+        <span class="sheet-label">Common Issues on ${esc(machine.shortName)}</span>
+        <div class="pill-row">
+          ${guide.issues
+            .map(
+              (iss) => `
+              <button type="button" class="seg-btn ${diagnosis?.id === iss.id ? 'is-active' : ''}" data-action="select-form-issue" data-issue="${iss.id}">
+                ${esc(iss.chip)}
+              </button>`
+            )
+            .join('')}
+        </div>
+      </div>
+
+      <form id="form-issue-form" class="sheet-section">
+        <span class="sheet-label">Or Describe What Feels Off</span>
+        <div style="display:flex;gap:8px;">
+          <input id="form-issue-input" name="issueText" class="field-input" type="text" placeholder="e.g. puts too much weight on lats instead..." value="${esc(formUi.rawText || '')}" />
+          <button type="submit" class="btn btn-primary btn-sm">Analyze</button>
+        </div>
+      </form>
+
+      ${
+        diagnosis
+          ? `
+          <div class="diagnosis-card">
+            <div>
+              <span class="sheet-label" style="color:var(--accent);">Why It Happens</span>
+              <p class="diagnosis-cause" style="margin:4px 0 0;">${esc(diagnosis.cause)}</p>
+            </div>
+
+            <div>
+              <span class="sheet-label">Fix Right Now</span>
+              <ol class="setup-steps" style="margin-top:4px;">
+                ${diagnosis.fixes.map((f) => `<li>${esc(f)}</li>`).join('')}
+              </ol>
+            </div>
+
+            <div class="sheet-section" style="gap:7px;margin-top:2px;">
+              ${
+                machine.loadType !== 'bodyweight' && machine.loadType !== 'cardio' && diagnosis.suggestDropLoad
+                  ? `
+                  <button type="button" class="btn btn-primary" data-action="apply-form-fix" data-cue="${esc(diagnosis.pinCue)}" data-drop="true">
+                    Pin Cue &amp; −${inc} ${unit} Today
+                  </button>
+                  <button type="button" class="btn btn-secondary btn-sm" data-action="apply-form-fix" data-cue="${esc(diagnosis.pinCue)}" data-drop="false">
+                    Pin Cue Only (Keep Weight)
+                  </button>
+                `
+                  : `
+                  <button type="button" class="btn btn-primary" data-action="apply-form-fix" data-cue="${esc(diagnosis.pinCue)}" data-drop="false">
+                    Pin Cue to ${esc(machine.shortName)}
+                  </button>
+                `
+              }
+              ${
+                swapMachine
+                  ? `
+                  <button type="button" class="btn btn-secondary btn-sm" data-action="apply-form-swap" data-swap-id="${swapMachine.id}">
+                    Swap to ${esc(swapMachine.name)} &amp; Prefer Next Time
+                  </button>
+                `
+                  : ''
+              }
+            </div>
+          </div>
+        `
+          : `<div class="cue-line"><span>Tap a symptom above or type what feels wrong — Coach will adjust setup, load, or swap the machine.</span></div>`
       }
     </div>
   `;
