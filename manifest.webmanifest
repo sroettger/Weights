@@ -1,0 +1,18 @@
+{
+  "name": "Weights — Gym Machine & Rest Tracker",
+  "short_name": "Weights",
+  "description": "Remember machine weights, seat settings, and rest timers right on the gym floor.",
+  "start_url": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#131519",
+  "theme_color": "#131519",
+  "icons": [
+    {
+      "src": "icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
