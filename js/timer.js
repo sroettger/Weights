@@ -1,14 +1,15 @@
 /**
- * Weights — Drift-Free Rest Timer Engine
+ * Weights — Drift-Free Phase Timer (Rest + Warmup + Cardio + Asymmetric HR Brake)
  * Uses wall-clock timestamps so locking your phone screen never causes drift.
  */
 
 export class RestTimer {
-  constructor(getTimerState, onChange, onCountdownTick, onComplete) {
+  constructor(getTimerState, onChange, onCountdownTick, onComplete, checkHrBrake = null) {
     this.getTimerState = getTimerState;
     this.onChange = onChange;
     this.onCountdownTick = onCountdownTick;
     this.onComplete = onComplete;
+    this.checkHrBrake = checkHrBrake;
     this.intervalId = null;
     this.lastCountdownSec = null;
   }
@@ -18,18 +19,23 @@ export class RestTimer {
     if (t.running && !t.paused && t.endTime) {
       this.ensureLoop();
     }
-    this.onChange(this.getSnapshot());
+    this.onChange(this.getSnapshot(), false);
   }
 
-  start(seconds, label = 'Rest') {
+  start(seconds, label = 'Rest', mode = 'rest') {
     const dur = Math.max(5, Math.round(Number(seconds) || 60));
+    const now = Date.now();
     const t = this.getTimerState();
     t.running = true;
     t.paused = false;
+    t.mode = mode;
+    t.startedAt = now;
     t.durationSec = dur;
-    t.endTime = Date.now() + dur * 1000;
+    t.endTime = now + dur * 1000;
     t.pausedRemainingMs = null;
     t.label = label;
+    t.hrExtensions = 0;
+    t.hrReason = '';
     t.notifiedComplete = false;
     this.lastCountdownSec = null;
     this.ensureLoop();
@@ -38,13 +44,10 @@ export class RestTimer {
 
   adjust(deltaSec) {
     const t = this.getTimerState();
-    if (!t.running) {
-      this.start(Math.max(15, 60 + deltaSec), 'Rest');
-      return;
-    }
+    if (!t.running) return;
     const deltaMs = deltaSec * 1000;
     if (t.paused) {
-      const next = Math.max(0, (t.pausedRemainingMs || 0) + deltaMs);
+      const next = Math.max(1000, (t.pausedRemainingMs || 0) + deltaMs);
       t.pausedRemainingMs = next;
       t.durationSec = Math.max(t.durationSec, Math.ceil(next / 1000));
     } else {
@@ -52,12 +55,8 @@ export class RestTimer {
       const base = t.endTime > now ? t.endTime : now;
       t.endTime = Math.max(now + 1000, base + deltaMs);
       const remainingSec = Math.ceil((t.endTime - now) / 1000);
-      if (remainingSec > t.durationSec) {
-        t.durationSec = remainingSec;
-      }
-      if (remainingSec > 0) {
-        t.notifiedComplete = false;
-      }
+      if (remainingSec > t.durationSec) t.durationSec = remainingSec;
+      if (remainingSec > 0) t.notifiedComplete = false;
     }
     this.onChange(this.getSnapshot(), true);
   }
@@ -72,7 +71,7 @@ export class RestTimer {
       this.ensureLoop();
     } else {
       t.paused = true;
-      t.pausedRemainingMs = t.endTime - Date.now();
+      t.pausedRemainingMs = Math.max(0, t.endTime - Date.now());
       this.stopLoop();
     }
     this.onChange(this.getSnapshot(), true);
@@ -84,6 +83,8 @@ export class RestTimer {
     t.paused = false;
     t.endTime = null;
     t.pausedRemainingMs = null;
+    t.hrExtensions = 0;
+    t.hrReason = '';
     t.notifiedComplete = false;
     this.lastCountdownSec = null;
     this.stopLoop();
@@ -96,37 +97,47 @@ export class RestTimer {
       return {
         running: false,
         paused: false,
+        mode: t.mode || 'rest',
         overtime: false,
         remainingSec: 0,
         overtimeSec: 0,
+        elapsedSec: 0,
         durationSec: t.durationSec || 90,
         progress: 0,
         label: t.label || '',
+        hrExtensions: 0,
+        hrReason: '',
       };
     }
 
-    const remainingMs = t.paused ? (t.pausedRemainingMs ?? 0) : (t.endTime - Date.now());
+    const now = Date.now();
+    const remainingMs = t.paused ? (t.pausedRemainingMs ?? 0) : t.endTime - now;
     const overtime = remainingMs <= 0;
     const remainingSec = overtime ? 0 : Math.ceil(remainingMs / 1000);
     const overtimeSec = overtime ? Math.floor(Math.abs(remainingMs) / 1000) : 0;
+    const elapsedSec = t.startedAt ? Math.max(0, Math.round((now - t.startedAt) / 1000)) : 0;
     const totalMs = Math.max(1000, (t.durationSec || 60) * 1000);
     const progress = overtime ? 1 : Math.min(1, Math.max(0, 1 - remainingMs / totalMs));
 
     return {
       running: true,
       paused: Boolean(t.paused),
+      mode: t.mode || 'rest',
       overtime,
       remainingSec,
       overtimeSec,
+      elapsedSec,
       durationSec: t.durationSec || 60,
       progress,
       label: t.label || 'Rest',
+      hrExtensions: t.hrExtensions || 0,
+      hrReason: t.hrReason || '',
     };
   }
 
   ensureLoop() {
     if (this.intervalId) return;
-    this.intervalId = window.setInterval(() => this.tick(), 200);
+    this.intervalId = window.setInterval(() => this.tick(), 250);
   }
 
   stopLoop() {
@@ -144,6 +155,26 @@ export class RestTimer {
     }
 
     const snap = this.getSnapshot();
+
+    // Asymmetric HR recovery brake when rest timer hits 0
+    if (
+      t.mode === 'rest' &&
+      snap.remainingSec <= 1 &&
+      !t.notifiedComplete &&
+      typeof this.checkHrBrake === 'function'
+    ) {
+      const brake = this.checkHrBrake(snap);
+      if (brake && brake.extendSec > 0) {
+        const now = Date.now();
+        t.endTime = Math.max(now, t.endTime) + brake.extendSec * 1000;
+        t.durationSec += brake.extendSec;
+        t.hrExtensions = (t.hrExtensions || 0) + 1;
+        t.hrReason = brake.reason || '+15s HR recovery';
+        this.lastCountdownSec = null;
+        this.onChange(this.getSnapshot(), true);
+        return;
+      }
+    }
 
     if (!snap.overtime && snap.remainingSec <= 3 && snap.remainingSec >= 1) {
       if (this.lastCountdownSec !== snap.remainingSec) {

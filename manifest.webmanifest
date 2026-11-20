@@ -1,12 +1,12 @@
 {
-  "name": "Weights — Gym Machine & Rest Tracker",
+  "name": "Weights — AI Strength & Cardio Coach",
   "short_name": "Weights",
-  "description": "Remember machine weights, seat settings, and rest timers right on the gym floor.",
+  "description": "Science-backed AI gym coach with 2D floor routing, mesocycle planning, and Garmin Venu 4s / Fitbit Air live heart rate.",
   "start_url": "./",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#131519",
-  "theme_color": "#131519",
+  "background_color": "#111317",
+  "theme_color": "#111317",
   "icons": [
     {
       "src": "icons/icon.svg",

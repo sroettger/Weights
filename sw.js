@@ -1,4 +1,4 @@
-const CACHE_NAME = 'weights-app-v5';
+const CACHE_NAME = 'weights-ai-coach-v6';
 const ASSETS = [
   './',
   './index.html',
@@ -7,8 +7,10 @@ const ASSETS = [
   './css/styles.css',
   './js/app.js',
   './js/audio.js',
-  './js/coach.js',
-  './js/data.js',
+  './js/floor.js',
+  './js/planner.js',
+  './js/science.js',
+  './js/state.js',
   './js/timer.js',
   './js/ui.js',
   './js/wearable.js',
