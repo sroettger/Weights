@@ -901,4 +901,348 @@ export function finalizeSessionToPlan(state, session, wearableSnap = null) {
   state.activeSession = null;
 }
 
+function recomputeSessionMeta(state, session) {
+  recomputeWalkDistances(session, state.floorOverrides || {});
+  if (state.partner?.enabled) {
+    attachPartnerAssignments(session.steps, state.athlete, state.partner, state.floorOverrides || {});
+  }
+  const estSec = session.steps.reduce((sum, st) => {
+    if (st.type === 'warmup' || st.type === 'cardio') return sum + st.durationSec;
+    return sum + st.sets.reduce((sAcc, s) => sAcc + 35 + (s.restSec || 90), 0);
+  }, 0);
+  session.estimatedMin = Math.max(12, Math.round(estSec / 60));
+}
+
+/**
+ * Swap a single planned station in the pre-workout briefing summary.
+ */
+export function swapBriefingStep(state, session, stepIndex) {
+  const step = session.steps[stepIndex];
+  if (!step) return null;
+  const curM = getMachineById(step.stationId);
+  const usedIds = session.steps.map((s) => s.stationId);
+  const sub = findBestSubstitute(curM, {
+    excludeIds: usedIds,
+    fromMachine: curM,
+    floorOverrides: state.floorOverrides || {},
+  });
+  if (!sub) return null;
+
+  step.stationId = sub.id;
+  step.zoneCode = getZoneInfo(sub.zone).code;
+  step.setup = sub.setup;
+  step.cue = state.athlete.formNotes?.[sub.id]?.pinnedCue || sub.cue;
+  if (step.type === 'lift') {
+    const rx = prescribeStation(sub, state.athlete, session.readiness);
+    step.pct1RM = rx.pct1RM;
+    step.sets = buildLiftSets(sub, rx);
+  }
+  recomputeSessionMeta(state, session);
+  session.feedbackNote = `Swapped ${curM.shortName} → ${sub.shortName}`;
+  return session.feedbackNote;
+}
+
+/**
+ * Remove a single non-essential step from the pre-workout briefing summary.
+ */
+export function removeBriefingStep(state, session, stepIndex) {
+  if (session.steps.length <= 2) return 'Minimum 2 blocks kept';
+  const [removed] = session.steps.splice(stepIndex, 1);
+  const m = getMachineById(removed?.stationId);
+  recomputeSessionMeta(state, session);
+  session.feedbackNote = `Removed ${m?.shortName || 'block'} · ${session.estimatedMin}m`;
+  return session.feedbackNote;
+}
+
+/**
+ * Parse natural-language or chip feedback before starting a workout and dynamically reshape the session.
+ */
+export function applyPreWorkoutFeedback(state, session, rawInput, liveWearable = null) {
+  const text = String(rawInput || '').trim();
+  if (!text) return null;
+  const q = text.toLowerCase();
+  const athlete = state.athlete;
+  const notes = [];
+
+  // 1. Time budget mention (e.g. "30 min", "25m", "quick")
+  const timeMatch = q.match(/\b(\d{2})\s*(?:m|min|mins|minutes)\b/);
+  if (timeMatch || q.includes('quick') || q.includes('hurry') || q.includes('short')) {
+    const mins = timeMatch ? Math.max(20, Math.min(75, parseInt(timeMatch[1], 10))) : 30;
+    const rebuilt = createDynamicSession(state, {
+      splitOverride: session.splitId,
+      durationMin: mins,
+      liveWearable,
+    });
+    Object.assign(session, rebuilt);
+    notes.push(`${mins}m budget`);
+  }
+
+  // 2. Post-climbing / finger / forearm fatigue
+  if (q.includes('climb') || q.includes('boulder') || q.includes('finger') || q.includes('forearm') || q.includes('grip') || q.includes('skin')) {
+    const used = new Set(session.steps.map((s) => s.stationId));
+    for (const st of session.steps) {
+      const m = getMachineById(st.stationId);
+      if ((m?.jointStress?.fingers || 0) > 0.3) {
+        const sub = findBestSubstitute(m, {
+          excludeIds: [...used],
+          painJoint: 'fingers',
+          fromMachine: m,
+          floorOverrides: state.floorOverrides || {},
+        });
+        if (sub) {
+          used.add(sub.id);
+          st.stationId = sub.id;
+          st.zoneCode = getZoneInfo(sub.zone).code;
+          st.setup = sub.setup;
+          st.cue = sub.cue;
+          if (st.type === 'lift') {
+            const rx = prescribeStation(sub, athlete, session.readiness);
+            st.pct1RM = rx.pct1RM;
+            st.sets = buildLiftSets(sub, rx);
+          }
+        }
+      }
+    }
+    notes.push('Finger/grip-safe stations');
+  }
+
+  // 3. Joint soreness / pain mentions
+  if (q.includes('shoulder')) {
+    applyPainProtection(session, athlete, 'shoulder', state.floorOverrides);
+    session.phase = 'briefing';
+    notes.push('Shoulder-safe swaps');
+  } else if (q.includes('knee')) {
+    applyPainProtection(session, athlete, 'knee', state.floorOverrides);
+    session.phase = 'briefing';
+    notes.push('Knee-safe swaps');
+  } else if (q.includes('lower back') || q.includes('lumbar') || q.includes('back hurt') || q.includes('back sore')) {
+    applyPainProtection(session, athlete, 'lower_back', state.floorOverrides);
+    session.phase = 'briefing';
+    notes.push('Back-safe swaps');
+  }
+
+  // 4. Muscle exclusions ("no legs", "skip arms / upper")
+  if (q.includes('no leg') || q.includes('skip leg') || q.includes('legs sore') || q.includes('sore legs')) {
+    const upperIds = ['m_lat_pull', 'm_low_row', 'm_smith_incline', 'm_abs_mat', 'm_cable_pull'];
+    const liftCount = Math.max(3, session.steps.filter((s) => s.type === 'lift').length);
+    const warm = session.steps.find((s) => s.type === 'warmup');
+    const card = session.steps.find((s) => s.type === 'cardio');
+    const newLifts = upperIds.slice(0, liftCount).map((id, i) => {
+      const m = getMachineById(id);
+      const rx = prescribeStation(m, athlete, session.readiness);
+      return {
+        id: `step_lift_upper_${i}_${m.id}`,
+        type: 'lift',
+        stationId: m.id,
+        zoneCode: getZoneInfo(m.zone).code,
+        walkMeters: 0,
+        setup: m.setup,
+        cue: athlete.formNotes?.[m.id]?.pinnedCue || m.cue,
+        pct1RM: rx.pct1RM,
+        seedE1rm: rx.e1rm,
+        sets: buildLiftSets(m, rx),
+        liveNote: '',
+        done: false,
+      };
+    });
+    if (warm) warm.stationId = 'c_rower';
+    session.splitName = 'Upper Pull, Push & Core';
+    session.steps = [...(warm ? [warm] : []), ...newLifts, ...(card ? [card] : [])];
+    notes.push('Upper & Core only (skipped legs)');
+  } else if (q.includes('no upper') || q.includes('skip arm') || q.includes('no arm') || q.includes('skip upper')) {
+    const lowerIds = ['m_leg_press', 'm_leg_curl', 'm_hip_thrust', 'm_calf', 'm_abs_mat'];
+    const liftCount = Math.max(3, session.steps.filter((s) => s.type === 'lift').length);
+    const warm = session.steps.find((s) => s.type === 'warmup');
+    const card = session.steps.find((s) => s.type === 'cardio');
+    const newLifts = lowerIds.slice(0, liftCount).map((id, i) => {
+      const m = getMachineById(id);
+      const rx = prescribeStation(m, athlete, session.readiness);
+      return {
+        id: `step_lift_lower_${i}_${m.id}`,
+        type: 'lift',
+        stationId: m.id,
+        zoneCode: getZoneInfo(m.zone).code,
+        walkMeters: 0,
+        setup: m.setup,
+        cue: athlete.formNotes?.[m.id]?.pinnedCue || m.cue,
+        pct1RM: rx.pct1RM,
+        seedE1rm: rx.e1rm,
+        sets: buildLiftSets(m, rx),
+        liveNote: '',
+        done: false,
+      };
+    });
+    if (warm) warm.stationId = 'c_bike';
+    session.splitName = 'Lower Body & Core';
+    session.steps = [...(warm ? [warm] : []), ...newLifts, ...(card ? [card] : [])];
+    notes.push('Legs & Core only');
+  }
+
+  // 5. Add focus stations ("core / abs", "glutes / butt")
+  if (q.includes('core') || q.includes('abs')) {
+    const hasCore = session.steps.some((s) => getMachineById(s.stationId)?.movement === 'core');
+    if (!hasCore) {
+      const coreM = getMachineById(athlete.formNotes?.m_ab_crunch?.preferSwapId || 'm_abs_mat');
+      const rx = prescribeStation(coreM, athlete, session.readiness);
+      const insertAt = Math.max(1, session.steps.length - (session.steps[session.steps.length - 1]?.type === 'cardio' ? 1 : 0));
+      session.steps.splice(insertAt, 0, {
+        id: `step_added_core_${Date.now()}`,
+        type: 'lift',
+        stationId: coreM.id,
+        zoneCode: getZoneInfo(coreM.zone).code,
+        walkMeters: 0,
+        setup: coreM.setup,
+        cue: coreM.cue,
+        pct1RM: rx.pct1RM,
+        sets: buildLiftSets(coreM, rx),
+        liveNote: '',
+        done: false,
+      });
+      notes.push(`Added ${coreM.shortName}`);
+    } else {
+      for (const st of session.steps) {
+        if (getMachineById(st.stationId)?.movement === 'core' && st.type === 'lift') {
+          const last = st.sets[st.sets.length - 1];
+          if (last && st.sets.length < 5) st.sets.push({ ...last, setIndex: st.sets.length + 1 });
+        }
+      }
+      notes.push('+1 Core set');
+    }
+  }
+
+  if (q.includes('glute') || q.includes('butt') || q.includes('hip thrust')) {
+    if (!session.steps.some((s) => s.stationId === 'm_hip_thrust')) {
+      const gm = getMachineById('m_hip_thrust');
+      const rx = prescribeStation(gm, athlete, session.readiness);
+      session.steps.splice(1, 0, {
+        id: `step_added_glute_${Date.now()}`,
+        type: 'lift',
+        stationId: gm.id,
+        zoneCode: getZoneInfo(gm.zone).code,
+        walkMeters: 0,
+        setup: gm.setup,
+        cue: gm.cue,
+        pct1RM: rx.pct1RM,
+        sets: buildLiftSets(gm, rx),
+        liveNote: '',
+        done: false,
+      });
+      notes.push('Added Glute Drive');
+    }
+  }
+
+  // 6. Energy / Readiness modulation ("low energy / tired / slept poorly" vs "strong / heavy")
+  if (q.includes('tired') || q.includes('sleep') || q.includes('slept') || q.includes('low energy') || q.includes('easy') || q.includes('light') || q.includes('exhaust')) {
+    for (const st of session.steps) {
+      if (st.type !== 'lift') continue;
+      const m = getMachineById(st.stationId);
+      const workSets = st.sets.filter((s) => s.kind === 'work');
+      if (workSets.length >= 3) st.sets.pop();
+      for (const s of st.sets) {
+        if (s.weightKg > 0) {
+          s.weightKg = roundToStep(s.weightKg * 0.92, m?.stepKg || 2.5);
+        }
+        s.rir = Math.min(4, (s.rir || 2) + 1);
+      }
+    }
+    notes.push('−8% load & −1 set per lift');
+  } else if (q.includes('strong') || q.includes('fresh') || q.includes('heavy') || q.includes('push hard') || /\bmax\b/.test(q)) {
+    for (const st of session.steps) {
+      if (st.type !== 'lift') continue;
+      const m = getMachineById(st.stationId);
+      if (m?.compound && m.loadType !== 'bodyweight') {
+        const inc = m.stepKg || 2.5;
+        for (const s of st.sets) {
+          if (s.kind === 'work') {
+            s.weightKg = Math.round((s.weightKg + inc) * 10) / 10;
+            s.rir = Math.max(1, (s.rir || 2) - 1);
+          }
+        }
+      }
+    }
+    notes.push('+Load on compounds (RIR 1)');
+  }
+
+  // 7. Cardio adjustments ("skip cardio", "more cardio", "stairs", "run", "vo2")
+  if (q.includes('no cardio') || q.includes('skip cardio') || q.includes('weights only')) {
+    const before = session.steps.length;
+    session.steps = session.steps.filter((s) => s.type !== 'cardio');
+    if (session.steps.length < before) notes.push('Skipped cardio');
+  } else if (q.includes('only cardio')) {
+    const rebuilt = createDynamicSession(state, { splitOverride: 'cardio_core', liveWearable });
+    Object.assign(session, rebuilt);
+    notes.push('Switched to Cardio + Core');
+  } else if (q.includes('vo2') || q.includes('interval') || q.includes('more cardio') || q.includes('stairs') || q.includes('treadmill') || q.includes('run')) {
+    let card = session.steps.find((s) => s.type === 'cardio');
+    if (!card) {
+      const hb = getHrBand(athlete, 0.6, 0.7);
+      card = {
+        id: 'step_cardio_added',
+        type: 'cardio',
+        protocol: 'zone2',
+        stationId: 'c_climbmill',
+        zoneCode: 'A',
+        walkMeters: 0,
+        durationSec: 720,
+        hrBand: hb,
+        setup: getMachineById('c_climbmill').setup,
+        cue: `Steady Zone 2 (${hb.min}–${hb.max} bpm)`,
+        done: false,
+      };
+      session.steps.push(card);
+    }
+    if (q.includes('stairs') || q.includes('climbmill')) {
+      card.stationId = 'c_climbmill';
+      card.setup = getMachineById('c_climbmill').setup;
+      notes.push('ClimbMill stairs');
+    } else if (q.includes('run') || q.includes('treadmill')) {
+      card.stationId = 'c_treadmill';
+      card.setup = getMachineById('c_treadmill').setup;
+      notes.push('Onyx Treadmill');
+    }
+    if (q.includes('vo2') || q.includes('interval')) {
+      const hb = getHrBand(athlete, 0.82, 0.92);
+      card.protocol = 'vo2_4x3';
+      card.durationSec = 1080;
+      card.hrBand = hb;
+      card.cue = `4 × 3m hard (${hb.min}–${hb.max} bpm) w/ 2m easy`;
+      notes.push('VO₂max 4×3m');
+    } else if (q.includes('more cardio')) {
+      card.durationSec = Math.min(2100, card.durationSec + 360);
+      notes.push('+6m cardio');
+    }
+  }
+
+  // 8. Swap or remove specific named station ("swap lat", "remove row", etc.)
+  const findMatchingStepIdx = () =>
+    session.steps.findIndex((st) => {
+      const m = getMachineById(st.stationId);
+      if (!m) return false;
+      const tokens = `${m.name} ${m.shortName}`.toLowerCase().split(/\W+/).filter((t) => t.length >= 3);
+      return tokens.some((tok) => q.includes(tok));
+    });
+
+  if (q.includes('swap') || q.includes('replace') || q.includes('change')) {
+    const idx = findMatchingStepIdx();
+    if (idx !== -1) {
+      const res = swapBriefingStep(state, session, idx);
+      if (res) notes.push(res);
+    }
+  } else if ((q.includes('remove') || q.includes('drop') || q.includes('skip ')) && !notes.length) {
+    const idx = findMatchingStepIdx();
+    if (idx !== -1) {
+      const res = removeBriefingStep(state, session, idx);
+      if (res) notes.push(res);
+    }
+  }
+
+  if (!notes.length) {
+    notes.push('Noted · Plan ready');
+  }
+
+  recomputeSessionMeta(state, session);
+  session.feedbackNote = notes.join(' · ');
+  return session.feedbackNote;
+}
+
 export { formatDurationShort };

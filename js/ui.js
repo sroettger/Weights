@@ -88,11 +88,11 @@ export function renderLiveHrStrip(wearableSnap, hrBand = null) {
   `;
 }
 
-export function renderCoachStage(state, session, timerSnap, wearableSnap, checkinDraft) {
+export function renderCoachStage(state, session, timerSnap, wearableSnap, checkinDraft, briefingView = 'plan') {
   if (!session) return '';
 
   if (session.phase === 'briefing') {
-    return renderBriefingStage(state, session, wearableSnap);
+    return renderBriefingStage(state, session, wearableSnap, briefingView);
   }
   if (session.phase === 'summary') {
     return renderSummaryStage(state, session, wearableSnap);
@@ -103,8 +103,18 @@ export function renderCoachStage(state, session, timerSnap, wearableSnap, checki
   return renderActiveStepStage(state, session, timerSnap, wearableSnap, checkinDraft);
 }
 
-function renderBriefingStage(state, session, wearableSnap) {
+const PREWORKOUT_FEEDBACK_CHIPS = [
+  { label: 'Climbed yesterday', text: 'climbed yesterday fingers tired' },
+  { label: 'Low energy', text: 'low energy today' },
+  { label: 'Feel strong', text: 'feeling strong push hard' },
+  { label: '+ Core', text: 'more core' },
+  { label: 'Skip cardio', text: 'skip cardio' },
+  { label: 'No legs', text: 'no legs today' },
+];
+
+function renderBriefingStage(state, session, wearableSnap, briefingView = 'plan') {
   const athlete = state.athlete;
+  const unit = state.settings.unit;
   const goal = GOAL_PROFILES[athlete.goal] || GOAL_PROFILES.max_strength;
   const routeIds = session.steps.map((s) => s.stationId);
   const rd = session.readiness;
@@ -128,11 +138,65 @@ function renderBriefingStage(state, session, wearableSnap) {
     )
     .join('');
 
-  const mapSvg = renderFloorPlanSvg({
-    activeId: routeIds[0],
-    routeIds,
-    floorOverrides: state.floorOverrides,
-  });
+  const summaryContentHtml =
+    briefingView === 'map'
+      ? `
+      <div data-action="open-floor-modal" style="cursor:pointer;">
+        ${renderFloorPlanSvg({
+          activeId: routeIds[0],
+          routeIds,
+          floorOverrides: state.floorOverrides,
+          compact: false,
+        })}
+      </div>
+    `
+      : `
+      <div class="briefing-step-list">
+        ${session.steps
+          .map((st, idx) => {
+            const m = getMachineById(st.stationId);
+            let rxLine = '';
+            if (st.type === 'warmup') {
+              rxLine = `${Math.round(st.durationSec / 60)}m warm-up · ${st.hrBand.min}–${st.hrBand.max} bpm`;
+            } else if (st.type === 'cardio') {
+              rxLine = `${Math.round(st.durationSec / 60)}m ${st.protocol === 'vo2_4x3' ? 'VO₂ 4×3m' : 'Zone 2'} · ${st.hrBand.min}–${st.hrBand.max} bpm`;
+            } else {
+              const work = st.sets.filter((s) => s.kind === 'work');
+              const hasWarm = st.sets.some((s) => s.kind === 'warmup');
+              const loadTxt = formatLoad(m, work[0]?.weightKg || 0, unit).primary;
+              rxLine = `${hasWarm ? '1w + ' : ''}${work.length}×${work[0]?.targetReps || 5} @ ${loadTxt}`;
+            }
+            if (st.partner) {
+              rxLine += ` · 👥 ${st.partner.stationName}`;
+            }
+
+            return `
+              <div class="briefing-step-row">
+                <button type="button" class="briefing-step-main" data-action="open-form-modal-for" data-machine-id="${esc(st.stationId)}" title="How to use ${esc(m?.name)}">
+                  <span class="briefing-num">${idx + 1}</span>
+                  <span style="min-width:0;">
+                    <span class="briefing-step-title">${esc(m?.name || '')}</span>
+                    <span class="briefing-step-rx">${esc(rxLine)}</span>
+                  </span>
+                </button>
+                <div class="briefing-step-actions">
+                  <button type="button" class="mini-act-btn" data-action="briefing-swap-step" data-index="${idx}" aria-label="Swap station" title="Swap station">↻</button>
+                  ${
+                    session.steps.length > 2
+                      ? `<button type="button" class="mini-act-btn" data-action="briefing-remove-step" data-index="${idx}" aria-label="Remove block" title="Remove">×</button>`
+                      : ''
+                  }
+                </div>
+              </div>
+            `;
+          })
+          .join('')}
+      </div>
+    `;
+
+  const quickFeedbackHtml = PREWORKOUT_FEEDBACK_CHIPS.map(
+    (c) => `<button type="button" class="seg-btn" data-action="apply-briefing-chip" data-feedback="${esc(c.text)}">${esc(c.label)}</button>`
+  ).join('');
 
   return `
     <section class="stage">
@@ -141,23 +205,41 @@ function renderBriefingStage(state, session, wearableSnap) {
         <button type="button" class="chip ${rdClass}" data-action="open-goal-modal">${esc(rd.label)} · ${esc(rd.summary)}</button>
       </div>
 
-      <div class="stage-body">
+      <div class="stage-body" style="gap:10px;">
         <div>
-          <h2 class="station-title">${esc(session.splitName)}</h2>
-          <p class="station-setup">${esc(session.splitReason)} · ${esc(goal.short)}</p>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+            <h2 class="station-title" style="font-size:clamp(1.32rem,5.2vw,1.75rem);">${esc(session.splitName)}</h2>
+            <button type="button" class="seg-btn ${state.partner.enabled ? 'is-active' : ''}" data-action="toggle-partner-quick">
+              ${state.partner.enabled ? `👥 + ${esc(state.partner.name)}` : '+ Partner'}
+            </button>
+          </div>
+          <p class="station-setup">${esc(
+            session.feedbackNote ? `Adjusted: ${session.feedbackNote}` : `${session.splitReason} · ${goal.short}`
+          )}</p>
         </div>
-
-        <div class="seg-row" aria-label="Session focus">${splitBtns}</div>
 
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-          <div class="seg-row">${durBtns}</div>
-          <button type="button" class="seg-btn ${state.partner.enabled ? 'is-active' : ''}" data-action="toggle-partner-quick">
-            ${state.partner.enabled ? `👥 + ${esc(state.partner.name)}` : '+ Partner'}
-          </button>
+          <div class="seg-row" aria-label="Session focus">${splitBtns}</div>
+          <div class="seg-row" style="flex-shrink:0;">${durBtns}</div>
         </div>
 
-        <div class="floor-card" data-action="open-floor-modal" style="cursor:pointer;">
-          ${mapSvg}
+        <div class="briefing-plan-card">
+          <div class="briefing-card-head">
+            <span class="sheet-label">Session Summary · ${session.estimatedMin} min</span>
+            <div class="seg-row">
+              <button type="button" class="seg-btn ${briefingView === 'plan' ? 'is-active' : ''}" style="padding:4px 9px;font-size:0.71rem;" data-action="set-briefing-view" data-view="plan">Plan (${session.steps.length})</button>
+              <button type="button" class="seg-btn ${briefingView === 'map' ? 'is-active' : ''}" style="padding:4px 9px;font-size:0.71rem;" data-action="set-briefing-view" data-view="map">Floor Route</button>
+            </div>
+          </div>
+          ${summaryContentHtml}
+        </div>
+
+        <div class="sheet-section" style="gap:6px;">
+          <div class="seg-row" aria-label="Quick pre-workout feedback">${quickFeedbackHtml}</div>
+          <form id="briefing-feedback-form" class="feedback-bar">
+            <input id="briefing-feedback-input" name="feedback" class="field-input" style="height:38px;font-size:0.81rem;" type="text" placeholder="Adjust plan (e.g. climbed yesterday, swap row, 35m)..." />
+            <button type="submit" class="btn btn-secondary btn-sm" style="height:38px;">Adjust</button>
+          </form>
         </div>
 
         <div id="live-hr-mount">${renderLiveHrStrip(wearableSnap)}</div>
@@ -165,7 +247,7 @@ function renderBriefingStage(state, session, wearableSnap) {
 
       <div class="stage-bottom">
         <button type="button" id="start-session-btn" class="btn btn-primary cta-giant" data-action="start-session">
-          Start Session · ${session.estimatedMin} min (${session.steps.length} blocks)
+          Start Workout · ${session.estimatedMin} min
         </button>
       </div>
     </section>

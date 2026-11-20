@@ -14,6 +14,9 @@ import {
   applyPainProtection,
   compressRemainingSession,
   applyFormAdjustment,
+  swapBriefingStep,
+  removeBriefingStep,
+  applyPreWorkoutFeedback,
   completeCurrentStep,
   finalizeSessionToPlan,
 } from './planner.js';
@@ -37,6 +40,7 @@ let activeModal = null; // 'goal' | 'floor' | 'pain' | 'plan' | 'wearable' | 'fo
 let editFloorPins = false;
 let draggingMachineId = null;
 let checkinDraft = { open: false, stepId: null, reps: 5 };
+let briefingView = 'plan'; // 'plan' | 'map'
 let formUi = { tab: 'guide', machineId: null, query: '', rawText: '' };
 let toastTimer = null;
 
@@ -176,7 +180,8 @@ function renderStageOnly() {
     sess,
     restTimer.getSnapshot(),
     wearable.getSnapshot(),
-    checkinDraft
+    checkinDraft,
+    briefingView
   );
 }
 
@@ -361,6 +366,45 @@ document.addEventListener('click', (event) => {
       break;
 
     // Briefing controls
+    case 'set-briefing-view': {
+      briefingView = btn.dataset.view === 'map' ? 'map' : 'plan';
+      renderStageOnly();
+      break;
+    }
+    case 'open-form-modal-for': {
+      formUi = {
+        tab: 'guide',
+        machineId: btn.dataset.machineId || 'm_ab_crunch',
+        query: '',
+        rawText: '',
+      };
+      openModal('form', 'Machine Setup & Form Coach');
+      break;
+    }
+    case 'briefing-swap-step': {
+      const idx = parseInt(btn.dataset.index, 10);
+      const msg = swapBriefingStep(state, sess, idx);
+      saveState(state);
+      renderAll();
+      if (msg) showToast(msg);
+      break;
+    }
+    case 'briefing-remove-step': {
+      const idx = parseInt(btn.dataset.index, 10);
+      const msg = removeBriefingStep(state, sess, idx);
+      saveState(state);
+      renderAll();
+      if (msg) showToast(msg);
+      break;
+    }
+    case 'apply-briefing-chip': {
+      const fb = btn.dataset.feedback || '';
+      const msg = applyPreWorkoutFeedback(state, sess, fb, wearable.getSnapshot());
+      saveState(state);
+      renderAll();
+      if (msg) showToast(msg);
+      break;
+    }
     case 'select-split': {
       const splitId = btn.dataset.split;
       state.activeSession = createDynamicSession(state, {
@@ -709,6 +753,21 @@ document.addEventListener('click', (event) => {
 });
 
 // Form submissions inside modals
+mainEl.addEventListener('submit', (event) => {
+  if (event.target.id === 'briefing-feedback-form') {
+    event.preventDefault();
+    const fd = new FormData(event.target);
+    const raw = String(fd.get('feedback') || '').trim();
+    if (raw) {
+      const sess = ensureSession();
+      const msg = applyPreWorkoutFeedback(state, sess, raw, wearable.getSnapshot());
+      saveState(state);
+      renderAll();
+      if (msg) showToast(msg);
+    }
+  }
+});
+
 modalBodyEl.addEventListener('submit', (event) => {
   event.preventDefault();
   const fd = new FormData(event.target);

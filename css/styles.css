@@ -1184,6 +1184,111 @@ button {
   line-height: 1.38;
 }
 
+.briefing-plan-card {
+  background: var(--surface-1);
+  border: 1px solid var(--border-strong);
+  border-radius: 15px;
+  padding: 10px 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.briefing-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.briefing-step-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-height: 206px;
+  overflow-y: auto;
+}
+
+.briefing-step-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+
+.briefing-step-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+  text-align: left;
+}
+
+.briefing-num {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  background: var(--surface-3);
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.7rem;
+  font-weight: 800;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+
+.briefing-step-title {
+  font-size: 0.81rem;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.briefing-step-rx {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  display: block;
+}
+
+.briefing-step-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.mini-act-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: var(--text-secondary);
+  display: grid;
+  place-items: center;
+}
+
+.mini-act-btn:hover {
+  color: var(--text);
+  background: var(--surface-3);
+}
+
+.feedback-bar {
+  display: flex;
+  gap: 7px;
+}
+
 /* ==========================================================================
    Toast
    ========================================================================== */
