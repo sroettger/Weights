@@ -37,23 +37,41 @@ export const WEARABLE_PRESETS = {
     label: 'Fitbit Air',
     shortLabel: 'Air',
     connectLabel: 'Connect Air',
-    disconnectHint: 'Fitbit Air disconnected · Check "Share heart rate" in Google Health.',
+    disconnectHint: 'Fitbit Air disconnected · Toggle "Share heart rate" Off → On in Google Health.',
     stepsTitle: 'Google Health Setup',
     steps: [
-      '<strong>Google Health</strong> → Devices → <strong>Fitbit Air</strong>',
-      '<strong>Share heart rate</strong> → <strong>Always visible</strong>',
-      'Chrome (Android) or Bluefy (iOS) → <strong>Connect Air</strong>',
+      '<strong>Google Health</strong> → top-left device icon → <strong>Fitbit Air → Share heart rate</strong>',
+      'Turn on <strong>Always visible</strong> (if reconnect stalls, toggle Off → On once)',
+      'Tap <strong>Connect Air</strong> &amp; approve Google Health prompt if shown',
     ],
     zonesHint: 'Karvonen HR reserve zones (Z1–Z5)',
   },
 };
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function withTimeout(promise, ms, label) {
+  let timerId = null;
+  const timeoutPromise = new Promise((_, reject) => {
+    timerId = setTimeout(() => {
+      const err = new Error(`${label} timed out after ${Math.round(ms / 1000)}s`);
+      err.name = 'TimeoutError';
+      reject(err);
+    }, ms);
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timerId !== null) clearTimeout(timerId);
+  });
+}
 
 export function detectWearableType(deviceName) {
   const n = String(deviceName || '').toLowerCase();
   if (n.includes('venu') || n.includes('garmin') || n.includes('forerunner') || n.includes('fenix')) {
     return 'garmin_venu_4s';
   }
-  if (n.includes('fitbit') || n.includes('pixel')) {
+  if (n.includes('fitbit') || n.includes('pixel') || /\bair\b/.test(n) || n.includes('charge')) {
     return 'fitbit_air';
   }
   return null;
@@ -68,7 +86,13 @@ const GOOGLE_HEALTH_SCOPES = [
 /**
  * Parse standard Bluetooth SIG Heart Rate Measurement (0x2A37) payload.
  */
-export function parseHeartRateMeasurement(dataView) {
+export function parseHeartRateMeasurement(rawVal) {
+  const dataView =
+    rawVal instanceof DataView
+      ? rawVal
+      : rawVal?.buffer
+      ? new DataView(rawVal.buffer, rawVal.byteOffset || 0, rawVal.byteLength)
+      : null;
   if (!dataView || dataView.byteLength < 2) return null;
   const flags = dataView.getUint8(0);
   const is16Bit = Boolean(flags & 0x01);
@@ -78,6 +102,7 @@ export function parseHeartRateMeasurement(dataView) {
   const rrPresent = Boolean(flags & 0x10);
 
   let offset = 1;
+  if (dataView.byteLength < offset + (is16Bit ? 2 : 1)) return null;
   const bpm = is16Bit ? dataView.getUint16(offset, true) : dataView.getUint8(offset);
   offset += is16Bit ? 2 : 1;
 
@@ -142,10 +167,16 @@ export class WearableManager {
     this.device = null;
     this.characteristic = null;
     this.simTimerId = null;
-    this.simPhase = 0;
+    this.connectAttemptId = 0;
+    this.userDisconnected = false;
+    this.reconnectingInBg = false;
+    this._boundDisconnected = null;
+    this._boundHrChanged = null;
+    this._firstPacketResolver = null;
 
     this.live = {
       status: 'disconnected', // 'disconnected' | 'connecting' | 'connected' | 'simulating' | 'error'
+      connectingStage: '',
       deviceName: '',
       detectedType: null,
       bpm: null,
@@ -183,6 +214,11 @@ export class WearableManager {
     return {
       ...this.live,
       bleSupported: WearableManager.isBleSupported(),
+      canReconnect:
+        Boolean(this.device) &&
+        this.live.status !== 'connected' &&
+        this.live.status !== 'connecting' &&
+        this.live.status !== 'simulating',
       preset: this.getPreset(),
       zone,
       avgBpm,
@@ -206,6 +242,11 @@ export class WearableManager {
   recordSample(bpm, contact = true, rrIntervalsMs = []) {
     const now = Date.now();
     const prevAt = this.live.lastSampleAt;
+    if (this.live.status === 'connecting') {
+      this.live.status = 'connected';
+      this.live.connectingStage = '';
+      this.live.errorMessage = '';
+    }
     this.live.bpm = bpm;
     this.live.contact = contact;
     this.live.lastSampleAt = now;
@@ -252,10 +293,243 @@ export class WearableManager {
     this.emit();
   }
 
-  async connectBle() {
+  _cleanupCharacteristicListener() {
+    if (this.characteristic && this._boundHrChanged) {
+      try {
+        this.characteristic.removeEventListener('characteristicvaluechanged', this._boundHrChanged);
+      } catch {
+        // Ignore
+      }
+    }
+    this.characteristic = null;
+    this._boundHrChanged = null;
+  }
+
+  _attachDisconnectHandler(device) {
+    if (!device) return;
+    if (this._boundDisconnected) {
+      try {
+        device.removeEventListener('gattserverdisconnected', this._boundDisconnected);
+      } catch {
+        // Ignore
+      }
+    }
+    this._boundDisconnected = () => {
+      if (this.userDisconnected || this.device !== device) return;
+      // Ignore transient disconnects while connectBle's own retry loop is actively running
+      if (this.live.status === 'connecting') return;
+
+      if (this.live.status === 'connected' && !this.reconnectingInBg) {
+        void this._tryAutoReconnect(device);
+      }
+    };
+    device.addEventListener('gattserverdisconnected', this._boundDisconnected);
+  }
+
+  async _tryAutoReconnect(device) {
+    this.reconnectingInBg = true;
+    const token = this.connectAttemptId;
+    try {
+      await sleep(900);
+      if (this.userDisconnected || token !== this.connectAttemptId || this.device !== device) return;
+      const ok = await this._establishHrStream(device, token, { maxTries: 2, silentStage: true });
+      if (ok) return;
+    } catch {
+      // Fall through to disconnected state
+    } finally {
+      this.reconnectingInBg = false;
+    }
+
+    if (!this.userDisconnected && this.device === device) {
+      const activePreset = WEARABLE_PRESETS[this.live.detectedType] || this.getPreset();
+      this.live.status = 'disconnected';
+      this.live.connectingStage = '';
+      this.live.bpm = null;
+      this.live.hrvMs = null;
+      this.live.errorMessage = activePreset.disconnectHint;
+      this.emit();
+    }
+  }
+
+  async _establishHrStream(device, attemptToken, { maxTries = 3, silentStage = false } = {}) {
+    let lastErr = null;
+
+    for (let tries = 1; tries <= maxTries; tries += 1) {
+      if (this.userDisconnected || attemptToken !== this.connectAttemptId) return false;
+
+      if (!silentStage) {
+        this.live.connectingStage =
+          tries === 1
+            ? `Connecting to ${this.live.deviceName || 'watch'}…`
+            : `Completing HR handshake (${tries}/${maxTries})…`;
+        this.emit();
+      }
+
+      try {
+        const server = device.gatt.connected
+          ? device.gatt
+          : await withTimeout(device.gatt.connect(), 8000, 'Bluetooth GATT connect');
+
+        if (this.userDisconnected || attemptToken !== this.connectAttemptId) return false;
+
+        if (!silentStage) {
+          this.live.connectingStage = 'Opening Heart Rate service (0x180D)…';
+          this.emit();
+        }
+        const hrService = await withTimeout(
+          server.getPrimaryService(HEART_RATE_SERVICE),
+          6000,
+          'Heart Rate service lookup'
+        );
+
+        const hrChar = await withTimeout(
+          hrService.getCharacteristic(HEART_RATE_MEASUREMENT),
+          5000,
+          'Heart Rate characteristic lookup'
+        );
+
+        this._cleanupCharacteristicListener();
+        this.characteristic = hrChar;
+
+        const firstPacketPromise = new Promise((resolve) => {
+          this._firstPacketResolver = resolve;
+        });
+
+        this._boundHrChanged = (event) => {
+          if (this.userDisconnected) return;
+          if (this._firstPacketResolver) {
+            const resolve = this._firstPacketResolver;
+            this._firstPacketResolver = null;
+            resolve(true);
+          }
+          const parsed = parseHeartRateMeasurement(event?.target?.value);
+          if (parsed && parsed.bpm > 0) {
+            this.recordSample(parsed.bpm, parsed.contact, parsed.rrIntervalsMs);
+          } else if (this.live.status !== 'connected') {
+            // Even a 0-bpm warmup packet proves 0x2A37 notifications are live
+            this.live.status = 'connected';
+            this.live.connectingStage = '';
+            this.live.errorMessage = '';
+            this.emit();
+          }
+        };
+
+        hrChar.addEventListener('characteristicvaluechanged', this._boundHrChanged);
+
+        if (!silentStage) {
+          this.live.connectingStage = 'Starting live HR stream…';
+          this.emit();
+        }
+
+        // Race startNotifications() against the first incoming 0x2A37 packet AND a 6s timeout.
+        // On Android + Fitbit Air, Google Health's "sharing heart rate" notification can stall
+        // Chromium's startNotifications() promise even when BLE notifications are already arriving,
+        // or briefly reset GATT right as sharing turns on (handled by the retry loop below).
+        await Promise.race([
+          hrChar.startNotifications(),
+          firstPacketPromise,
+          sleep(6000).then(() => {
+            if (this.live.status === 'connected') return true;
+            const tErr = new Error('Waiting for HR stream timed out');
+            tErr.name = 'TimeoutError';
+            throw tErr;
+          }),
+        ]);
+
+        this._firstPacketResolver = null;
+        if (this.userDisconnected || attemptToken !== this.connectAttemptId) return false;
+
+        this.live.status = 'connected';
+        this.live.connectingStage = '';
+        this.live.errorMessage = '';
+        this.emit();
+
+        // Non-blocking initial read ONLY if characteristic explicitly supports Read
+        if (hrChar.properties?.read) {
+          hrChar
+            .readValue()
+            .then((val) => {
+              const parsed = parseHeartRateMeasurement(val);
+              if (parsed && parsed.bpm > 0 && !this.live.bpm) {
+                this.recordSample(parsed.bpm, parsed.contact, parsed.rrIntervalsMs);
+              }
+            })
+            .catch(() => {});
+        }
+
+        return true;
+      } catch (err) {
+        this._firstPacketResolver = null;
+        lastErr = err;
+        // If notifications already started delivering packets during the race, treat as connected!
+        if (this.live.status === 'connected') {
+          this.live.connectingStage = '';
+          this.live.errorMessage = '';
+          this.emit();
+          return true;
+        }
+        if (this.userDisconnected || attemptToken !== this.connectAttemptId) return false;
+
+        if (tries < maxTries) {
+          try {
+            if (device.gatt?.connected) device.gatt.disconnect();
+          } catch {
+            // Ignore
+          }
+          await sleep(850 * tries);
+        }
+      }
+    }
+
+    throw lastErr || new Error('Could not start Heart Rate notifications.');
+  }
+
+  async _readOptionalDeviceMetadata(device, attemptToken) {
+    // Delay slightly so we never contend with initial 0x2A37 subscription on Android GATT
+    await sleep(1600);
+    if (
+      this.userDisconnected ||
+      attemptToken !== this.connectAttemptId ||
+      this.live.status !== 'connected' ||
+      !device?.gatt?.connected
+    ) {
+      return;
+    }
+
+    const server = device.gatt;
+    try {
+      const battService = await withTimeout(server.getPrimaryService(BATTERY_SERVICE), 2500, 'Battery service');
+      const battChar = await withTimeout(battService.getCharacteristic(BATTERY_LEVEL), 2500, 'Battery char');
+      const battVal = await withTimeout(battChar.readValue(), 2500, 'Battery read');
+      this.live.batteryPct = battVal.getUint8(0);
+      this.emit();
+    } catch {
+      // Optional battery service not exposed
+    }
+
+    if (this.userDisconnected || attemptToken !== this.connectAttemptId || !device?.gatt?.connected) return;
+
+    try {
+      const infoService = await withTimeout(server.getPrimaryService(DEVICE_INFO_SERVICE), 2500, 'Info service');
+      const modelChar = await withTimeout(infoService.getCharacteristic(MODEL_NUMBER_CHAR), 2500, 'Model char');
+      const modelVal = await withTimeout(modelChar.readValue(), 2500, 'Model read');
+      const modelStr = new TextDecoder().decode(modelVal).replace(/\0/g, '').trim();
+      if (modelStr && (!device.name || device.name.length < 4)) {
+        this.live.deviceName = modelStr;
+      }
+      const detected = detectWearableType(this.live.deviceName) || detectWearableType(modelStr);
+      if (detected) this.live.detectedType = detected;
+      this.emit();
+    } catch {
+      // Optional device info service not exposed
+    }
+  }
+
+  async connectBle({ reuseDevice = false } = {}) {
     const preset = this.getPreset();
     if (!WearableManager.isBleSupported()) {
       this.live.status = 'error';
+      this.live.connectingStage = '';
       this.live.errorMessage =
         'Web Bluetooth needs Chrome (Android/Desktop) or Bluefy (iOS). Try Simulate HR below.';
       this.emit();
@@ -263,81 +537,72 @@ export class WearableManager {
     }
 
     this.stopSimulation();
+    const attemptToken = ++this.connectAttemptId;
+    this.userDisconnected = false;
+
+    if (!reuseDevice && this.device?.gatt?.connected) {
+      try {
+        this.device.gatt.disconnect();
+      } catch {
+        // Ignore
+      }
+    }
+
     this.live.status = 'connecting';
+    this.live.connectingStage = reuseDevice && this.device ? 'Reconnecting…' : 'Select watch in Bluetooth prompt…';
     this.live.errorMessage = '';
     this.emit();
 
     try {
-      const device = await navigator.bluetooth.requestDevice({
-        filters: [{ services: [HEART_RATE_SERVICE] }],
-        optionalServices: [BATTERY_SERVICE, DEVICE_INFO_SERVICE],
-      });
+      let device = reuseDevice && this.device ? this.device : null;
+      if (!device) {
+        device = await navigator.bluetooth.requestDevice({
+          filters: [
+            { services: [HEART_RATE_SERVICE] },
+            { namePrefix: 'Fitbit' },
+            { namePrefix: 'Pixel' },
+            { namePrefix: 'Garmin' },
+            { namePrefix: 'Venu' },
+          ],
+          optionalServices: [HEART_RATE_SERVICE, BATTERY_SERVICE, DEVICE_INFO_SERVICE],
+        });
+      }
+
+      if (this.userDisconnected || attemptToken !== this.connectAttemptId) return false;
 
       this.device = device;
       this.live.deviceName = device.name || preset.label;
       this.live.detectedType = detectWearableType(this.live.deviceName);
+      this._attachDisconnectHandler(device);
 
-      device.addEventListener('gattserverdisconnected', () => {
-        if (this.live.status === 'connected') {
-          const activePreset = WEARABLE_PRESETS[this.live.detectedType] || this.getPreset();
-          this.live.status = 'disconnected';
-          this.live.bpm = null;
-          this.live.hrvMs = null;
-          this.live.errorMessage = activePreset.disconnectHint;
-          this.emit();
-        }
-      });
+      const connected = await this._establishHrStream(device, attemptToken, { maxTries: 3 });
+      if (!connected) return false;
 
-      const server = await device.gatt.connect();
-      const hrService = await server.getPrimaryService(HEART_RATE_SERVICE);
-      const hrChar = await hrService.getCharacteristic(HEART_RATE_MEASUREMENT);
-      this.characteristic = hrChar;
-
-      hrChar.addEventListener('characteristicvaluechanged', (event) => {
-        const parsed = parseHeartRateMeasurement(event.target.value);
-        if (parsed && parsed.bpm > 0) {
-          this.recordSample(parsed.bpm, parsed.contact, parsed.rrIntervalsMs);
-        }
-      });
-
-      await hrChar.startNotifications();
-
-      // Optional battery read (supported on Garmin Venu 4s & Fitbit Air)
-      try {
-        const battService = await server.getPrimaryService(BATTERY_SERVICE);
-        const battChar = await battService.getCharacteristic(BATTERY_LEVEL);
-        const battVal = await battChar.readValue();
-        this.live.batteryPct = battVal.getUint8(0);
-      } catch {
-        this.live.batteryPct = null;
+      // Fitbit Air only exposes 0x180D to third-party BLE clients; probing 0x180F/0x180A
+      // over its Google Health multiplexed link can stall Android's GATT queue.
+      const isFitbit =
+        this.live.detectedType === 'fitbit_air' || this.getProfile()?.deviceType === 'fitbit_air';
+      if (!isFitbit) {
+        void this._readOptionalDeviceMetadata(device, attemptToken);
       }
 
-      // Optional model number read to refine device label (e.g. Venu 4s)
-      try {
-        const infoService = await server.getPrimaryService(DEVICE_INFO_SERVICE);
-        const modelChar = await infoService.getCharacteristic(MODEL_NUMBER_CHAR);
-        const modelVal = await modelChar.readValue();
-        const modelStr = new TextDecoder().decode(modelVal).replace(/\0/g, '').trim();
-        if (modelStr && (!device.name || device.name.length < 4)) {
-          this.live.deviceName = modelStr;
-        }
-        const detected = detectWearableType(this.live.deviceName) || detectWearableType(modelStr);
-        if (detected) this.live.detectedType = detected;
-      } catch {
-        // Optional service not exposed
-      }
-
-      this.live.status = 'connected';
-      this.live.errorMessage = '';
-      this.emit();
       return true;
     } catch (err) {
+      if (this.userDisconnected || attemptToken !== this.connectAttemptId) {
+        return false;
+      }
       if (err?.name === 'NotFoundError') {
         this.live.status = 'disconnected';
+        this.live.connectingStage = '';
         this.live.errorMessage = '';
       } else {
         this.live.status = 'error';
-        this.live.errorMessage = err?.message || `Could not connect to ${preset.label} over Bluetooth.`;
+        this.live.connectingStage = '';
+        const isFitbit =
+          this.live.detectedType === 'fitbit_air' || this.getProfile()?.deviceType === 'fitbit_air';
+        this.live.errorMessage = isFitbit
+          ? 'Google Health started sharing, but BLE link timed out. Tap Retry Pair below (or toggle Share heart rate Off → On).'
+          : err?.message || `Could not connect to ${preset.label} over Bluetooth.`;
       }
       this.emit();
       return false;
@@ -345,7 +610,11 @@ export class WearableManager {
   }
 
   disconnect() {
+    this.userDisconnected = true;
+    this.connectAttemptId += 1;
+    this._firstPacketResolver = null;
     this.stopSimulation();
+    this._cleanupCharacteristicListener();
     if (this.device?.gatt?.connected) {
       try {
         this.device.gatt.disconnect();
@@ -353,9 +622,8 @@ export class WearableManager {
         // Ignore
       }
     }
-    this.device = null;
-    this.characteristic = null;
     this.live.status = 'disconnected';
+    this.live.connectingStage = '';
     this.live.bpm = null;
     this.live.batteryPct = null;
     this.live.hrvMs = null;
@@ -370,8 +638,10 @@ export class WearableManager {
    */
   startSimulation(isRestingFn) {
     this.disconnect();
+    this.userDisconnected = false;
     const preset = this.getPreset();
     this.live.status = 'simulating';
+    this.live.connectingStage = '';
     this.live.deviceName = `${preset.label} (Demo)`;
     this.live.detectedType = preset.id;
     this.live.batteryPct = 84;
@@ -379,7 +649,7 @@ export class WearableManager {
     let currentBpm = 114;
     this.recordSample(currentBpm, true);
 
-    this.simTimerId = window.setInterval(() => {
+    this.simTimerId = setInterval(() => {
       const resting = typeof isRestingFn === 'function' ? isRestingFn() : false;
       const target = resting ? 102 : 146;
       const step = resting ? -2.2 : 2.8;
@@ -393,7 +663,7 @@ export class WearableManager {
 
   stopSimulation() {
     if (this.simTimerId) {
-      window.clearInterval(this.simTimerId);
+      clearInterval(this.simTimerId);
       this.simTimerId = null;
     }
   }

@@ -722,8 +722,10 @@ document.addEventListener('click', (event) => {
       }
       break;
     }
-    case 'wearable-connect-ble': {
-      wearable.connectBle().then((ok) => {
+    case 'wearable-connect-ble':
+    case 'wearable-reconnect-ble': {
+      const reuseDevice = action === 'wearable-reconnect-ble';
+      wearable.connectBle({ reuseDevice }).then((ok) => {
         if (ok) {
           const snap = wearable.getSnapshot();
           if (snap.detectedType && snap.detectedType !== state.wearable.deviceType) {
@@ -742,8 +744,9 @@ document.addEventListener('click', (event) => {
       break;
     }
     case 'wearable-disconnect': {
+      const wasConnecting = wearable.getSnapshot().status === 'connecting';
       wearable.disconnect();
-      showToast('Watch disconnected');
+      showToast(wasConnecting ? 'Pairing cancelled' : 'Watch disconnected');
       break;
     }
 
@@ -901,7 +904,17 @@ renderAll();
 restTimer.init();
 
 if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
+  let reloadingSw = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!reloadingSw && state.activeSession?.phase === 'briefing' && !restTimer.getSnapshot().running) {
+      reloadingSw = true;
+      window.location.reload();
+    }
+  });
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
+    navigator.serviceWorker
+      .register('./sw.js')
+      .then((reg) => reg.update().catch(() => {}))
+      .catch(() => {});
   });
 }

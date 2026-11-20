@@ -1,4 +1,4 @@
-const CACHE_NAME = 'weights-ai-coach-v8';
+const CACHE_NAME = 'weights-ai-coach-v9';
 const ASSETS = [
   './',
   './index.html',
@@ -34,19 +34,20 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
+  const url = new URL(event.request.url);
+  if (url.origin !== self.location.origin) return;
+
+  // Network-first so deployed updates take effect immediately on reload,
+  // with instant offline cache fallback for basement/no-signal gyms.
   event.respondWith(
-    caches.match(event.request).then(
-      (cached) =>
-        cached ||
-        fetch(event.request)
-          .then((response) => {
-            if (response.ok && new URL(event.request.url).origin === self.location.origin) {
-              const copy = response.clone();
-              caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
-            }
-            return response;
-          })
-          .catch(() => caches.match('./index.html'))
-    )
+    fetch(event.request)
+      .then((response) => {
+        if (response && response.ok) {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+        }
+        return response;
+      })
+      .catch(() => caches.match(event.request).then((cached) => cached || caches.match('./index.html')))
   );
 });

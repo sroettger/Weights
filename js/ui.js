@@ -942,6 +942,7 @@ export function renderPlanModalBody(state, session) {
 
 export function renderWearableModalBody(state, snap) {
   const isLive = snap.status === 'connected' || snap.status === 'simulating';
+  const isConnecting = snap.status === 'connecting';
   const deviceType = state.wearable?.deviceType || 'garmin_venu_4s';
   const preset = WEARABLE_PRESETS[deviceType] || WEARABLE_PRESETS.garmin_venu_4s;
   const gh = state.wearable?.googleHealthSummary;
@@ -954,6 +955,14 @@ export function renderWearableModalBody(state, snap) {
   ];
   if (snap.hrvMs) stats.push(`HRV ${snap.hrvMs} ms`);
   if (snap.batteryPct !== null && snap.batteryPct !== undefined) stats.push(`${snap.batteryPct}%`);
+
+  const statusSub = isConnecting
+    ? snap.connectingStage || 'Connecting BLE Heart Rate (0x180D)…'
+    : isLive
+    ? snap.bpm
+      ? stats.join(' · ')
+      : 'Connected · Acquiring wrist pulse…'
+    : 'BLE Heart Rate (0x180D)';
 
   return `
     <div class="sheet-section" style="gap:12px;">
@@ -970,22 +979,40 @@ export function renderWearableModalBody(state, snap) {
                 ? esc(snap.deviceName)
                 : snap.status === 'simulating'
                 ? esc(snap.deviceName || `${preset.label} (Demo)`)
-                : snap.status === 'connecting'
-                ? 'Pairing...'
+                : isConnecting
+                ? `Pairing ${esc(snap.deviceName || preset.shortLabel)}…`
                 : `${esc(preset.label)} · Off`
             }
           </strong>
-          <div class="spec-tile-sub">${isLive ? esc(stats.join(' · ')) : 'BLE Heart Rate (0x180D)'}</div>
+          <div class="spec-tile-sub">${esc(statusSub)}</div>
         </div>
-        ${isLive ? `<button type="button" class="btn btn-danger btn-sm" data-action="wearable-disconnect">Stop</button>` : ''}
+        ${
+          isLive
+            ? `<button type="button" class="btn btn-danger btn-sm" data-action="wearable-disconnect">Stop</button>`
+            : isConnecting
+            ? `<button type="button" class="btn btn-secondary btn-sm" data-action="wearable-disconnect">Cancel</button>`
+            : ''
+        }
       </div>
 
       ${snap.errorMessage ? `<div class="cue-line is-adapted">${esc(snap.errorMessage)}</div>` : ''}
 
-      <div class="option-grid-2">
-        <button type="button" class="btn btn-primary" data-action="wearable-connect-ble" ${snap.status === 'connecting' ? 'disabled' : ''}>${esc(preset.connectLabel)}</button>
-        <button type="button" class="btn btn-secondary" data-action="${snap.status === 'simulating' ? 'wearable-disconnect' : 'wearable-simulate'}">${snap.status === 'simulating' ? 'Stop Demo' : 'Simulate HR'}</button>
-      </div>
+      ${
+        snap.canReconnect
+          ? `
+        <div class="option-grid-2">
+          <button type="button" class="btn btn-primary" data-action="wearable-reconnect-ble">Retry ${esc(snap.deviceName || preset.shortLabel)}</button>
+          <button type="button" class="btn btn-secondary" data-action="wearable-connect-ble">Scan Again</button>
+        </div>
+        <button type="button" class="btn btn-secondary btn-sm" data-action="wearable-simulate">Simulate HR (Demo)</button>
+      `
+          : `
+        <div class="option-grid-2">
+          <button type="button" class="btn btn-primary" data-action="wearable-connect-ble" ${isConnecting ? 'disabled' : ''}>${esc(preset.connectLabel)}</button>
+          <button type="button" class="btn btn-secondary" data-action="${snap.status === 'simulating' ? 'wearable-disconnect' : 'wearable-simulate'}">${snap.status === 'simulating' ? 'Stop Demo' : 'Simulate HR'}</button>
+        </div>
+      `
+      }
 
       <div class="list-card" style="flex-direction:column;align-items:flex-start;">
         <span class="sheet-label">${esc(preset.stepsTitle)}</span>
