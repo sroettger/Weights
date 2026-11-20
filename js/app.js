@@ -115,7 +115,9 @@ function renderWearableUI(snap) {
   const isLive = snap.status === 'connected' || snap.status === 'simulating';
   if (wearableBtnEl && wearableBtnLabelEl) {
     wearableBtnEl.classList.toggle('is-live', isLive);
-    wearableBtnLabelEl.textContent = isLive ? `${snap.bpm ?? '--'} · Z${snap.zone.zone || 1}` : 'Air';
+    wearableBtnLabelEl.textContent = isLive
+      ? `${snap.bpm ?? '--'} · Z${snap.zone.zone || 1}`
+      : snap.preset?.shortLabel || 'Venu 4s';
   }
 
   const mount = document.getElementById('live-hr-mount');
@@ -812,12 +814,29 @@ document.addEventListener('click', async (event) => {
       break;
     }
     case 'open-wearable-modal': {
-      openModal('wearable', 'Google Fitbit Air', renderWearableModalBody(state, wearable.getSnapshot()));
+      openModal('wearable', 'Heart Rate Watch', renderWearableModalBody(state, wearable.getSnapshot()));
+      break;
+    }
+    case 'set-wearable-device': {
+      const nextDev = btn.dataset.device;
+      if (nextDev === 'garmin_venu_4s' || nextDev === 'fitbit_air') {
+        state.wearable.deviceType = nextDev;
+        saveState(state);
+        renderWearableUI(wearable.getSnapshot());
+      }
       break;
     }
     case 'wearable-connect-ble': {
       wearable.connectBle().then((ok) => {
-        if (ok) showToast('Fitbit Air connected');
+        if (ok) {
+          const snap = wearable.getSnapshot();
+          if (snap.detectedType && snap.detectedType !== state.wearable.deviceType) {
+            state.wearable.deviceType = snap.detectedType;
+            saveState(state);
+            renderWearableUI(wearable.getSnapshot());
+          }
+          showToast(`${snap.deviceName || snap.preset?.label || 'Watch'} connected`);
+        }
       });
       break;
     }
@@ -952,7 +971,7 @@ document.addEventListener('keydown', (event) => {
 });
 
 wearableBtnEl.addEventListener('click', () => {
-  openModal('wearable', 'Google Fitbit Air', renderWearableModalBody(state, wearable.getSnapshot()));
+  openModal('wearable', 'Heart Rate Watch', renderWearableModalBody(state, wearable.getSnapshot()));
 });
 
 document.getElementById('open-settings-btn').addEventListener('click', openSettingsModal);

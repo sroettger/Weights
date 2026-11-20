@@ -11,6 +11,7 @@ import {
   getRelativeDate,
 } from './data.js';
 import { getActiveQueue, ensureValidActiveMachine } from './coach.js';
+import { WEARABLE_PRESETS } from './wearable.js';
 
 export function escapeHtml(str) {
   return String(str ?? '')
@@ -632,10 +633,26 @@ export function renderLiveBiometrics(snap, timerSnap, activeMachine) {
 
 export function renderWearableModalBody(state, snap) {
   const isLive = snap.status === 'connected' || snap.status === 'simulating';
+  const deviceType = state.wearable?.deviceType || 'garmin_venu_4s';
+  const preset = WEARABLE_PRESETS[deviceType] || WEARABLE_PRESETS.garmin_venu_4s;
   const gh = state.wearable?.googleHealthSummary;
+
+  const liveStatsParts = [
+    `${snap.bpm ?? '--'} bpm`,
+    `Z${snap.zone.decimal || 0} (${snap.zone.label})`,
+    `Avg ${snap.avgBpm ?? '--'}`,
+    `Peak ${snap.peakBpm ?? '--'}`,
+  ];
+  if (snap.hrvMs) liveStatsParts.push(`HRV ${snap.hrvMs} ms`);
+  if (snap.batteryPct !== null && snap.batteryPct !== undefined) liveStatsParts.push(`${snap.batteryPct}%`);
 
   return `
     <div class="form-stack">
+      <div class="cardio-toggle">
+        <button type="button" class="cardio-opt ${deviceType === 'garmin_venu_4s' ? 'is-active' : ''}" data-action="set-wearable-device" data-device="garmin_venu_4s">Garmin Venu 4s</button>
+        <button type="button" class="cardio-opt ${deviceType === 'fitbit_air' ? 'is-active' : ''}" data-action="set-wearable-device" data-device="fitbit_air">Fitbit Air</button>
+      </div>
+
       <div class="wearable-status-box">
         <div>
           <strong style="display:block;font-size:0.94rem;">
@@ -643,14 +660,14 @@ export function renderWearableModalBody(state, snap) {
               snap.status === 'connected'
                 ? escapeHtml(snap.deviceName)
                 : snap.status === 'simulating'
-                ? 'Fitbit Air (Demo)'
+                ? escapeHtml(snap.deviceName || `${preset.label} (Demo)`)
                 : snap.status === 'connecting'
                 ? 'Pairing...'
-                : 'Fitbit Air · Off'
+                : `${escapeHtml(preset.label)} · Off`
             }
           </strong>
           <span class="spec-sub">
-            ${isLive ? `${snap.bpm ?? '--'} bpm · Z${snap.zone.decimal || 0} (${snap.zone.label}) · Avg ${snap.avgBpm ?? '--'} · Peak ${snap.peakBpm ?? '--'}` : 'BLE Heart Rate (0x180D)'}
+            ${isLive ? escapeHtml(liveStatsParts.join(' · ')) : 'BLE Heart Rate (0x180D)'}
           </span>
         </div>
         ${isLive ? `<button type="button" class="btn btn-danger btn-sm" data-action="wearable-disconnect">Stop</button>` : ''}
@@ -659,16 +676,14 @@ export function renderWearableModalBody(state, snap) {
       ${snap.errorMessage ? `<div class="wearable-error">${escapeHtml(snap.errorMessage)}</div>` : ''}
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-        <button type="button" class="btn btn-primary" data-action="wearable-connect-ble" ${snap.status === 'connecting' ? 'disabled' : ''}>Connect Air</button>
+        <button type="button" class="btn btn-primary" data-action="wearable-connect-ble" ${snap.status === 'connecting' ? 'disabled' : ''}>${escapeHtml(preset.connectLabel)}</button>
         <button type="button" class="btn btn-secondary" data-action="${snap.status === 'simulating' ? 'wearable-disconnect' : 'wearable-simulate'}">${snap.status === 'simulating' ? 'Stop Demo' : 'Simulate HR'}</button>
       </div>
 
       <div class="spec-box">
-        <span class="spec-label">Google Health Setup</span>
+        <span class="spec-label">${escapeHtml(preset.stepsTitle)}</span>
         <ol class="setup-steps">
-          <li><strong>Google Health</strong> → Devices → <strong>Fitbit Air</strong></li>
-          <li><strong>Share heart rate</strong> → <strong>Always visible</strong></li>
-          <li>Open in Chrome (Android) or Bluefy (iOS) → <strong>Connect Air</strong></li>
+          ${preset.steps.map((s) => `<li>${s}</li>`).join('')}
         </ol>
       </div>
 
@@ -683,17 +698,24 @@ export function renderWearableModalBody(state, snap) {
             <input id="w-mhr" name="maxHr" class="field-input mono" type="number" min="120" max="220" value="${escapeHtml(state.wearable.maxHr || 188)}" />
           </div>
         </div>
+        <div class="spec-sub">${escapeHtml(preset.zonesHint)}</div>
         <button type="submit" class="btn btn-secondary btn-sm">Save HR Zones</button>
       </form>
 
-      <div class="spec-box" style="gap:8px;">
-        <span class="spec-label">Google Health API v4 (Optional)</span>
-        <div class="spec-sub">${gh ? `RHR ${gh.restingHr ?? '--'} · HRV ${gh.hrvMs ?? '--'} ms` : 'Daily RHR & HRV via OAuth Client ID'}</div>
-        <form id="google-health-form" class="coach-cmd-form">
-          <input name="clientId" class="coach-cmd-input mono" type="text" placeholder="Google OAuth Client ID" value="${escapeHtml(state.wearable.googleHealthClientId || '')}" />
-          <button type="submit" class="btn btn-secondary btn-sm">Sync</button>
-        </form>
-      </div>
+      ${
+        deviceType === 'fitbit_air'
+          ? `
+        <div class="spec-box" style="gap:8px;">
+          <span class="spec-label">Google Health API v4 (Optional)</span>
+          <div class="spec-sub">${gh ? `RHR ${gh.restingHr ?? '--'} · HRV ${gh.hrvMs ?? '--'} ms` : 'Daily RHR & HRV via OAuth Client ID'}</div>
+          <form id="google-health-form" class="coach-cmd-form">
+            <input name="clientId" class="coach-cmd-input mono" type="text" placeholder="Google OAuth Client ID" value="${escapeHtml(state.wearable.googleHealthClientId || '')}" />
+            <button type="submit" class="btn btn-secondary btn-sm">Sync</button>
+          </form>
+        </div>
+      `
+          : ''
+      }
     </div>
   `;
 }

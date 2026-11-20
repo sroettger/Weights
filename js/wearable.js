@@ -1,16 +1,63 @@
 /**
- * Weights — Google Fitbit Air (BLE 0x180D) & Google Health API v4 Connector
+ * Weights — Live Heart Rate Connector (Garmin Venu 4s & Google Fitbit Air)
  *
- * 1) Live 1 Hz Heart Rate directly over Web Bluetooth (BLE Heart Rate Service 0x180D / 0x2A37)
- *    Requires: Google Health app -> Devices -> Fitbit Air -> Share heart rate -> Always visible
- * 2) Optional Google Health API v4 (health.googleapis.com/v4) for daily resting HR, HRV & steps
- * 3) Built-in live workout simulator for testing without a paired device
+ * 1) Live 1 Hz Heart Rate over Web Bluetooth (BLE Heart Rate Service 0x180D / 0x2A37)
+ *    - Garmin Venu 4s: Settings -> Health & Wellness -> Wrist Heart Rate -> Broadcast Heart Rate
+ *      (or Controls menu, or auto-enable under Strength Activity Settings)
+ *    - Google Fitbit Air: Google Health app -> Devices -> Fitbit Air -> Share heart rate -> Always visible
+ * 2) Optional Battery (0x180F) & Device Info (0x180A) reads + RR-interval HRV (RMSSD)
+ * 3) Optional Google Health API v4 (health.googleapis.com/v4) for Fitbit Air daily RHR/HRV
+ * 4) Built-in live workout simulator for testing without a paired device
  */
 
 const HEART_RATE_SERVICE = 0x180d;
 const HEART_RATE_MEASUREMENT = 0x2a37;
 const BATTERY_SERVICE = 0x180f;
 const BATTERY_LEVEL = 0x2a19;
+const DEVICE_INFO_SERVICE = 0x180a;
+const MODEL_NUMBER_CHAR = 0x2a24;
+
+export const WEARABLE_PRESETS = {
+  garmin_venu_4s: {
+    id: 'garmin_venu_4s',
+    label: 'Garmin Venu 4s',
+    shortLabel: 'Venu 4s',
+    connectLabel: 'Connect Venu 4s',
+    disconnectHint: 'Venu 4s disconnected · Re-enable Broadcast Heart Rate on watch.',
+    stepsTitle: 'Garmin Venu 4s Setup',
+    steps: [
+      'Watch: <strong>Settings → Health &amp; Wellness → Wrist Heart Rate → Broadcast Heart Rate</strong> (or <strong>Controls</strong> menu)',
+      'Auto option: <strong>Strength Settings → Broadcast Heart Rate → On</strong>',
+      'Chrome (Android) or Bluefy (iOS) → <strong>Connect Venu 4s</strong>',
+    ],
+    zonesHint: 'Match your Venu 4s (Settings → User Profile → Heart Rate & Power Zones)',
+  },
+  fitbit_air: {
+    id: 'fitbit_air',
+    label: 'Fitbit Air',
+    shortLabel: 'Air',
+    connectLabel: 'Connect Air',
+    disconnectHint: 'Fitbit Air disconnected · Check "Share heart rate" in Google Health.',
+    stepsTitle: 'Google Health Setup',
+    steps: [
+      '<strong>Google Health</strong> → Devices → <strong>Fitbit Air</strong>',
+      '<strong>Share heart rate</strong> → <strong>Always visible</strong>',
+      'Chrome (Android) or Bluefy (iOS) → <strong>Connect Air</strong>',
+    ],
+    zonesHint: 'Karvonen HR reserve zones (Z1–Z5)',
+  },
+};
+
+export function detectWearableType(deviceName) {
+  const n = String(deviceName || '').toLowerCase();
+  if (n.includes('venu') || n.includes('garmin') || n.includes('forerunner') || n.includes('fenix')) {
+    return 'garmin_venu_4s';
+  }
+  if (n.includes('fitbit') || n.includes('pixel')) {
+    return 'fitbit_air';
+  }
+  return null;
+}
 
 const GOOGLE_HEALTH_BASE = 'https://health.googleapis.com/v4';
 const GOOGLE_HEALTH_SCOPES = [
@@ -100,10 +147,13 @@ export class WearableManager {
     this.live = {
       status: 'disconnected', // 'disconnected' | 'connecting' | 'connected' | 'simulating' | 'error'
       deviceName: '',
+      detectedType: null,
       bpm: null,
       batteryPct: null,
+      hrvMs: null,
       contact: true,
       samples: [], // last 90 readings: { t, bpm }
+      rrBuffer: [], // last 30 RR intervals (ms)
       sessionSum: 0,
       sessionCount: 0,
       sessionPeak: 0,
@@ -117,6 +167,11 @@ export class WearableManager {
     return typeof navigator !== 'undefined' && Boolean(navigator.bluetooth);
   }
 
+  getPreset() {
+    const profile = this.getProfile();
+    return WEARABLE_PRESETS[profile?.deviceType] || WEARABLE_PRESETS.garmin_venu_4s;
+  }
+
   getSnapshot() {
     const profile = this.getProfile();
     const zone = computeHrZone(this.live.bpm, profile.restingHr, profile.maxHr);
@@ -128,6 +183,7 @@ export class WearableManager {
     return {
       ...this.live,
       bleSupported: WearableManager.isBleSupported(),
+      preset: this.getPreset(),
       zone,
       avgBpm,
       peakBpm: this.live.sessionPeak || null,
@@ -142,15 +198,36 @@ export class WearableManager {
     this.live.sessionPeak = 0;
     this.live.estKcal = 0;
     this.live.samples = [];
+    this.live.rrBuffer = [];
+    this.live.hrvMs = null;
     this.emit();
   }
 
-  recordSample(bpm, contact = true) {
+  recordSample(bpm, contact = true, rrIntervalsMs = []) {
     const now = Date.now();
     const prevAt = this.live.lastSampleAt;
     this.live.bpm = bpm;
     this.live.contact = contact;
     this.live.lastSampleAt = now;
+
+    if (Array.isArray(rrIntervalsMs) && rrIntervalsMs.length) {
+      for (const rr of rrIntervalsMs) {
+        if (rr >= 300 && rr <= 2000) this.live.rrBuffer.push(rr);
+      }
+      if (this.live.rrBuffer.length > 30) {
+        this.live.rrBuffer = this.live.rrBuffer.slice(-30);
+      }
+      if (this.live.rrBuffer.length >= 6) {
+        let sumSq = 0;
+        let n = 0;
+        for (let i = 1; i < this.live.rrBuffer.length; i++) {
+          const d = this.live.rrBuffer[i] - this.live.rrBuffer[i - 1];
+          sumSq += d * d;
+          n += 1;
+        }
+        if (n > 0) this.live.hrvMs = Math.round(Math.sqrt(sumSq / n));
+      }
+    }
 
     if (bpm > 30 && bpm < 230) {
       this.live.samples.push({ t: now, bpm });
@@ -176,10 +253,11 @@ export class WearableManager {
   }
 
   async connectBle() {
+    const preset = this.getPreset();
     if (!WearableManager.isBleSupported()) {
       this.live.status = 'error';
       this.live.errorMessage =
-        'Web Bluetooth requires Chrome (Android, macOS, Windows) or Bluefy on iOS. You can test Live Mode with Simulate below.';
+        'Web Bluetooth needs Chrome (Android/Desktop) or Bluefy (iOS). Try Simulate HR below.';
       this.emit();
       return false;
     }
@@ -192,17 +270,20 @@ export class WearableManager {
     try {
       const device = await navigator.bluetooth.requestDevice({
         filters: [{ services: [HEART_RATE_SERVICE] }],
-        optionalServices: [BATTERY_SERVICE],
+        optionalServices: [BATTERY_SERVICE, DEVICE_INFO_SERVICE],
       });
 
       this.device = device;
-      this.live.deviceName = device.name || 'Google Fitbit Air';
+      this.live.deviceName = device.name || preset.label;
+      this.live.detectedType = detectWearableType(this.live.deviceName);
 
       device.addEventListener('gattserverdisconnected', () => {
         if (this.live.status === 'connected') {
+          const activePreset = WEARABLE_PRESETS[this.live.detectedType] || this.getPreset();
           this.live.status = 'disconnected';
           this.live.bpm = null;
-          this.live.errorMessage = 'Fitbit Air disconnected. Ensure "Share heart rate" is on in Google Health.';
+          this.live.hrvMs = null;
+          this.live.errorMessage = activePreset.disconnectHint;
           this.emit();
         }
       });
@@ -215,13 +296,13 @@ export class WearableManager {
       hrChar.addEventListener('characteristicvaluechanged', (event) => {
         const parsed = parseHeartRateMeasurement(event.target.value);
         if (parsed && parsed.bpm > 0) {
-          this.recordSample(parsed.bpm, parsed.contact);
+          this.recordSample(parsed.bpm, parsed.contact, parsed.rrIntervalsMs);
         }
       });
 
       await hrChar.startNotifications();
 
-      // Optional battery read
+      // Optional battery read (supported on Garmin Venu 4s & Fitbit Air)
       try {
         const battService = await server.getPrimaryService(BATTERY_SERVICE);
         const battChar = await battService.getCharacteristic(BATTERY_LEVEL);
@@ -229,6 +310,21 @@ export class WearableManager {
         this.live.batteryPct = battVal.getUint8(0);
       } catch {
         this.live.batteryPct = null;
+      }
+
+      // Optional model number read to refine device label (e.g. Venu 4s)
+      try {
+        const infoService = await server.getPrimaryService(DEVICE_INFO_SERVICE);
+        const modelChar = await infoService.getCharacteristic(MODEL_NUMBER_CHAR);
+        const modelVal = await modelChar.readValue();
+        const modelStr = new TextDecoder().decode(modelVal).replace(/\0/g, '').trim();
+        if (modelStr && (!device.name || device.name.length < 4)) {
+          this.live.deviceName = modelStr;
+        }
+        const detected = detectWearableType(this.live.deviceName) || detectWearableType(modelStr);
+        if (detected) this.live.detectedType = detected;
+      } catch {
+        // Optional service not exposed
       }
 
       this.live.status = 'connected';
@@ -241,7 +337,7 @@ export class WearableManager {
         this.live.errorMessage = '';
       } else {
         this.live.status = 'error';
-        this.live.errorMessage = err?.message || 'Could not connect to Fitbit Air over Bluetooth.';
+        this.live.errorMessage = err?.message || `Could not connect to ${preset.label} over Bluetooth.`;
       }
       this.emit();
       return false;
@@ -262,18 +358,22 @@ export class WearableManager {
     this.live.status = 'disconnected';
     this.live.bpm = null;
     this.live.batteryPct = null;
+    this.live.hrvMs = null;
+    this.live.rrBuffer = [];
     this.live.errorMessage = '';
     this.emit();
   }
 
   /**
-   * Simulates realistic lifting + rest heart-rate fluctuations from a Fitbit Air
+   * Simulates realistic lifting + rest heart-rate fluctuations
    * so the user can preview live zones, sparkline, and recovery coaching anywhere.
    */
   startSimulation(isRestingFn) {
     this.disconnect();
+    const preset = this.getPreset();
     this.live.status = 'simulating';
-    this.live.deviceName = 'Fitbit Air (Demo)';
+    this.live.deviceName = `${preset.label} (Demo)`;
+    this.live.detectedType = preset.id;
     this.live.batteryPct = 84;
     this.live.errorMessage = '';
     let currentBpm = 114;

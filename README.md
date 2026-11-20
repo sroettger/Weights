@@ -1,6 +1,6 @@
 # Weights — Manegg Motion AI Training Coach
 
-An interactive, offline-first gym coach web app tailored to your Manegg Motion training circuit, with live **Google Fitbit Air** heart-rate integration.
+An interactive, offline-first gym coach web app tailored to your Manegg Motion training circuit, with live **Garmin Venu 4s** and **Google Fitbit Air** heart-rate integration.
 
 ## Pre-Loaded Manegg Motion Circuit
 
@@ -17,13 +17,14 @@ An interactive, offline-first gym coach web app tailored to your Manegg Motion t
 
 ## Features
 
-- **AI-Assisted Guided Coach View**: Shows one station at a time with exact weight / plate loading, seat & bench setup notes, target sets/reps, and rest duration.
-- **Post-Set Rep Check-In & Adaptive Progression**: After each set, log whether you managed fewer, exact, or more reps (plus effort). Finishing an exercise automatically adjusts your next session's weight, reps, or rest duration.
-- **Interactive Gym-Floor Flexibility**: Tap **Busy** to defer an occupied machine, **Swap** for an alternative, **Skip Today**, toggle body groups, or tell the coach directly (`"skip arms"`, `"lat pulldown busy"`, `"too heavy"`, `"switch to stairs"`, `"2 sets"`).
-- **Google Fitbit Air Live Data (BLE `0x180D`) + Google Health API v4**:
-  - Streams live 1-second BPM directly over **Web Bluetooth** (standard BLE Heart Rate Profile `0x180D` / `0x2A37`), displaying Karvonen HR zones, a live waveform, estimated kcal, HR-guided rest recovery alerts, and avg/peak BPM in workout history.
-  - **One-time setup on your phone:** Open the **Google Health** app → **Connections / Devices** → **Google Fitbit Air** → **Share heart rate** → turn on **Always visible**. Then open Weights in **Chrome** (Android/Desktop) or **Bluefy** (iOS) and tap **Fitbit Air** in the top bar.
-  - Optional **Google Health API v4** (`health.googleapis.com/v4`) sync for daily Resting HR, HRV, and steps using your own Google Cloud OAuth Client ID.
+- **Full-Screen Coach View**: One active station at a time with exact weight / plate loading, seat & bench setup specs, target sets/reps, and rest duration.
+- **Post-Set Rep Check-In & Adaptive Progression**: After each set, log actual reps. Finishing an exercise automatically adjusts next session's weight, reps, or rest duration.
+- **Interactive Gym-Floor Flexibility**: Tap **Busy** to defer an occupied machine, **Swap** for an alternative, **Skip**, or open **Plan** for **Skip Arms**, group filters, and quick commands (`"skip arms"`, `"lat pulldown busy"`, `"too heavy"`, `"switch to stairs"`, `"2 sets"`).
+- **Garmin Venu 4s & Google Fitbit Air Live Data (BLE `0x180D`)**:
+  - Streams live 1-second BPM (plus battery % and RR-interval HRV when broadcast) directly over **Web Bluetooth** (standard BLE Heart Rate Profile `0x180D` / `0x2A37`), displaying Karvonen HR zones, a live waveform, estimated kcal, HR-guided rest recovery, and avg/peak BPM in workout history.
+  - **Garmin Venu 4s setup**: On watch, open **Settings → Health & Wellness → Wrist Heart Rate → Broadcast Heart Rate** (or **Controls** menu; or auto-enable under **Strength Settings → Broadcast Heart Rate → On**).
+  - **Google Fitbit Air setup**: In **Google Health** app → **Devices** → **Fitbit Air** → **Share heart rate** → **Always visible**. Optional **Google Health API v4** sync for daily RHR & HRV.
+  - Open in **Chrome** (Android/Desktop) or **Bluefy** (iOS) and tap the watch pill in the top bar.
 - **Drift-Free Rest Timer**: Wall-clock countdown with `-15s`/`+15s`, overtime indicator, Web Audio chimes, vibration, and Screen Wake Lock.
 
 ## Running Locally

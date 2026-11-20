@@ -338,6 +338,7 @@ export function createDefaultState() {
       wakeLock: false,
     },
     wearable: {
+      deviceType: 'garmin_venu_4s',
       restingHr: 58,
       maxHr: 188,
       googleHealthClientId: '',
