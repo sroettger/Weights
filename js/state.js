@@ -5,8 +5,8 @@
 import { GYM_MACHINES, getMachineById } from './floor.js';
 import { totalMechanicalKg, estimate1RM, resolveMachineE1rm } from './science.js';
 
-export const STORAGE_KEY = 'weights_ai_coach_v9';
-const LEGACY_KEYS = ['weights_ai_coach_v8', 'weights_ai_coach_v7', 'weights_ai_coach_v6', 'weights_ai_coach_v5'];
+export const STORAGE_KEY = 'weights_ai_coach_v10';
+const LEGACY_KEYS = ['weights_ai_coach_v9', 'weights_ai_coach_v8', 'weights_ai_coach_v7', 'weights_ai_coach_v6', 'weights_ai_coach_v5'];
 
 function buildSeedLifts(now) {
   const day = 86400000;
@@ -33,6 +33,7 @@ function buildSeedLifts(now) {
       const ts = now - s.daysAgo * day;
       lifts[m.id] = {
         e1rm,
+        tareKg: m.tareKg || 0,
         lastWeight: s.weight,
         lastWorkingKg: s.weight,
         lastRepMax: s.reps,
@@ -52,12 +53,18 @@ function upgradeLiftsMap(rawLifts = {}, fallbackLifts = {}) {
   for (const [id, rec] of Object.entries(merged)) {
     const m = getMachineById(id);
     if (!m || !rec) continue;
-    const upgradedE1rm = resolveMachineE1rm(m, rec);
+    const lastWork = Number(rec.lastWorkingKg ?? rec.lastWeight ?? m.baselineWorkKg) || m.baselineWorkKg;
+    const lastRep = Number(rec.lastRepMax ?? rec.lastReps?.[0] ?? m.baselineReps) || m.baselineReps;
+    let upgradedE1rm = resolveMachineE1rm(m, rec);
+    if (m.loadType === 'plate_per_side' && rec.tareKg !== (m.tareKg || 0)) {
+      upgradedE1rm = estimate1RM(totalMechanicalKg(m, lastWork), lastRep, 2);
+    }
     out[id] = {
       ...rec,
       e1rm: upgradedE1rm,
-      lastWorkingKg: Number(rec.lastWorkingKg ?? rec.lastWeight ?? m.baselineWorkKg) || m.baselineWorkKg,
-      lastRepMax: Number(rec.lastRepMax ?? rec.lastReps?.[0] ?? m.baselineReps) || m.baselineReps,
+      tareKg: m.tareKg || 0,
+      lastWorkingKg: lastWork,
+      lastRepMax: lastRep,
       progressionState: rec.progressionState || 'hold',
     };
   }

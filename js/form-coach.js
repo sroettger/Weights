@@ -355,14 +355,14 @@ export const MACHINE_GUIDES = {
   },
 
   m_calf: {
-    pivot: 'Balls of feet on step edge · Heels free for full range',
+    pivot: 'Shoulders snug under pads · Balls of feet on angled diamond footplate',
     steps: [
-      'Place forefoot (base of big & little toe) squarely on platform edge',
-      'Lower heels slowly for 2s to a deep pause (silences Achilles bounce)',
-      'Press straight up through the big toe (don’t roll outward onto pinky)',
+      'Step onto angled Matrix MG-PL76 footplate with forefoot on edge; stand tall to unrack under shoulder pads',
+      'Keep knees straight (soft micro-bend) and lower heels 2s into a deep pause',
+      'Press straight up onto the big-toe joint (don’t roll outward onto pinky)',
     ],
-    feel: 'Calves (gastroc & soleus)',
-    avoid: 'Bouncing out of bottom stretch',
+    feel: 'Calves (gastrocnemius & soleus — straight-knee stretch)',
+    avoid: 'Bouncing out of bottom stretch or bending knees into a mini-squat',
     issues: [
       {
         id: 'achilles_bounce',
@@ -825,12 +825,12 @@ export function renderFormDiagramSvg(machine) {
 
     case 'm_calf':
       art = `
-        <path d="M44 66 L86 66 L86 92 M116 88 L144 88" fill="none" stroke="var(--border-strong)" stroke-width="4.5" stroke-linecap="round"/>
-        <line x1="88" y1="54" x2="108" y2="54" stroke="var(--warning)" stroke-width="5" stroke-linecap="round"/>
-        <path d="M56 32 L56 62 L102 62 L122 86" fill="none" stroke="var(--text)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
-        <circle cx="56" cy="20" r="7.5" fill="var(--text)"/>
-        <circle cx="118" cy="82" r="4.5" fill="var(--accent)"/>
-        <path d="M138 80 L138 56 M133 62 L138 55 L143 62" fill="none" stroke="var(--success)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M40 16 L40 92 M40 34 L86 34 M68 88 L108 82" fill="none" stroke="var(--border-strong)" stroke-width="4.5" stroke-linecap="round"/>
+        <line x1="72" y1="34" x2="96" y2="34" stroke="var(--warning)" stroke-width="6" stroke-linecap="round"/>
+        <path d="M84 36 L84 62 L84 82 L98 84" fill="none" stroke="var(--text)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="84" cy="21" r="7.5" fill="var(--text)"/>
+        <circle cx="84" cy="82" r="4.5" fill="var(--accent)"/>
+        <path d="M122 80 L122 44 M117 50 L122 43 L127 50" fill="none" stroke="var(--success)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
       `;
       break;
 

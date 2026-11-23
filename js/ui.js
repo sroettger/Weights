@@ -3,9 +3,14 @@
  * Plain-English + German gym stickers + Inline Machine Diagrams + 1-Tap Rep Logging
  */
 
+import { MATRIX_CATALOG } from './matrix-catalog.js';
 import {
   GYM_MACHINES,
   getMachineById,
+  getEffectivePos,
+  getEffectiveFloorDims,
+  getEffectiveMachineSpec,
+  buildFloorDiffSummary,
   getZoneInfo,
   renderFloorPlanSvg,
 } from './floor.js';
@@ -167,7 +172,7 @@ function renderBriefingStage(state, session, wearableSnap, briefingView = 'plan'
       <div class="briefing-step-list">
         ${session.steps
           .map((st, idx) => {
-            const m = getMachineById(st.stationId);
+            const m = getEffectiveMachineSpec(getMachineById(st.stationId), state.floorOverrides);
             let rxLine = '';
             if (st.type === 'warmup') {
               rxLine = `${Math.round(st.durationSec / 60)} min warm-up · ${st.hrBand.min}–${st.hrBand.max} bpm`;
@@ -277,7 +282,7 @@ function renderBriefingStage(state, session, wearableSnap, briefingView = 'plan'
 function renderActiveStepStage(state, session, timerSnap, wearableSnap) {
   const step = getActiveStep(session);
   if (!step) return '';
-  const machine = getMachineById(step.stationId);
+  const machine = getEffectiveMachineSpec(getMachineById(step.stationId), state.floorOverrides);
   const zoneInfo = getZoneInfo(machine.zone);
   const unit = state.settings.unit;
   const stepNum = session.currentStepIndex + 1;
@@ -830,24 +835,102 @@ export function renderGoalModalBody(state) {
   `;
 }
 
-export function renderFloorModalBody(state, session, editPins = false) {
+export function renderFloorModalBody(state, session, editPins = false, selectedEditId = null) {
   const step = getActiveStep(session);
   const routeIds = session ? session.steps.map((s) => s.stationId) : [];
   const completedIds = session ? session.steps.filter((s) => s.done).map((s) => s.stationId) : [];
+  const overrides = state.floorOverrides || {};
+  const diffText = buildFloorDiffSummary(overrides);
+  const hasChanges = Boolean(diffText);
+
+  const selId = selectedEditId || step?.stationId || GYM_MACHINES[0].id;
+  const baseSel = getMachineById(selId) || GYM_MACHINES[0];
+  const effSel = getEffectiveMachineSpec(baseSel, overrides);
+  const effPos = getEffectivePos(baseSel, overrides);
+  const dims = getEffectiveFloorDims(overrides);
+
+  const editInspectorHtml = editPins
+    ? `
+      <div class="list-card" style="flex-direction:column;align-items:stretch;gap:10px;">
+        <span class="sheet-label">Edit Machine Type &amp; Spot</span>
+        <div class="field">
+          <label for="floor-station-select">Station on Floor</label>
+          <select id="floor-station-select" class="field-input">
+            ${GYM_MACHINES.map((gm) => {
+              const p = getEffectivePos(gm, overrides);
+              const sp = getEffectiveMachineSpec(gm, overrides);
+              return `<option value="${gm.id}" ${gm.id === baseSel.id ? 'selected' : ''}>${esc(gm.name)} · ${esc(sp.matrixCode || '')} (${p.x}, ${p.y}m)</option>`;
+            }).join('')}
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="floor-matrix-select">Official Matrix Fitness Model (world.matrixfitness.com)</label>
+          <select id="floor-matrix-select" class="field-input">
+            ${MATRIX_CATALOG.map(
+              (mc) =>
+                `<option value="${mc.code}" ${effSel.matrixCode === mc.code ? 'selected' : ''}>${esc(mc.code)} — ${esc(mc.name)} (${mc.widthM}×${mc.depthM}m${
+                  mc.tareKg ? `, ${mc.tareKg}kg tare` : ''
+                })</option>`
+            ).join('')}
+          </select>
+        </div>
+
+        <div class="field-grid-2">
+          <div class="field">
+            <label for="floor-pos-x">East–West X (m)</label>
+            <input id="floor-pos-x" class="field-input mono" type="number" step="0.1" min="0.5" max="${dims.width}" value="${effPos.x}" />
+          </div>
+          <div class="field">
+            <label for="floor-pos-y">North–South Y (m)</label>
+            <input id="floor-pos-y" class="field-input mono" type="number" step="0.1" min="0.5" max="${dims.height}" value="${effPos.y}" />
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="floor-note-input">Layout Note (optional)</label>
+          <input id="floor-note-input" class="field-input" type="text" placeholder="e.g. rotated 90° facing mirror, next to pillar..." value="${esc(effSel.note || '')}" />
+        </div>
+      </div>
+
+      <div class="list-card" style="flex-direction:column;align-items:stretch;gap:8px;">
+        <span class="sheet-label">Room Dimensions (meters)</span>
+        <div class="field-grid-2">
+          <div class="field">
+            <label for="floor-sec1-w">Sec 1 Width (m)</label>
+            <input id="floor-sec1-w" class="field-input mono" type="number" step="0.2" min="7" max="20" value="${dims.sec1Width}" />
+          </div>
+          <div class="field">
+            <label for="floor-sec1-d">Sec 1 Depth (m)</label>
+            <input id="floor-sec1-d" class="field-input mono" type="number" step="0.2" min="10" max="30" value="${dims.sec1Depth}" />
+          </div>
+          <div class="field">
+            <label for="floor-room-w">Total Gym W (m)</label>
+            <input id="floor-room-w" class="field-input mono" type="number" step="0.5" min="16" max="50" value="${dims.width}" />
+          </div>
+          <div class="field">
+            <label for="floor-room-h">Total Gym D (m)</label>
+            <input id="floor-room-h" class="field-input mono" type="number" step="0.5" min="12" max="36" value="${dims.height}" />
+          </div>
+        </div>
+      </div>
+    `
+    : '';
 
   return `
     <div class="sheet-section">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
         <span class="spec-tile-sub">${
-          editPins ? 'Drag any pin to fine-tune its spot.' : 'Section 1 mapped from photos · Sec 2 awaiting photos'
+          editPins ? 'Tap or drag any pin · Pick Matrix model below' : 'Sec 1 Matrix models verified · Sec 2 awaiting photos'
         }</span>
         <div style="display:flex;gap:6px;">
-          <button type="button" class="btn btn-secondary btn-sm" data-action="toggle-floor-edit">
-            ${editPins ? 'Done' : 'Move Pins'}
+          <button type="button" class="btn ${editPins ? 'btn-primary' : 'btn-secondary'} btn-sm" data-action="toggle-floor-edit">
+            ${editPins ? 'Done' : 'Edit Layout'}
           </button>
           ${
-            Object.keys(state.floorOverrides || {}).length
-              ? `<button type="button" class="btn btn-secondary btn-sm" data-action="reset-floor-pins">Reset</button>`
+            hasChanges
+              ? `<button type="button" class="btn btn-secondary btn-sm" data-action="copy-floor-diff">Copy Diff</button>
+                 <button type="button" class="btn btn-secondary btn-sm" data-action="reset-floor-pins">Reset</button>`
               : ''
           }
         </div>
@@ -860,10 +943,19 @@ export function renderFloorModalBody(state, session, editPins = false) {
           routeIds,
           completedIds,
           busyIds: session?.busyIds || [],
-          floorOverrides: state.floorOverrides,
+          floorOverrides: overrides,
+          selectedEditId: editPins ? baseSel.id : null,
           interactive: editPins,
         })}
       </div>
+
+      ${editInspectorHtml}
+
+      ${
+        hasChanges && editPins
+          ? `<button type="button" class="btn btn-primary" data-action="copy-floor-diff">Copy Proposed Changes for Chat</button>`
+          : ''
+      }
 
       <div class="pill-row">
         <span class="chip">🟠 Current</span>

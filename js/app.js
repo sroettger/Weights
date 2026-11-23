@@ -3,7 +3,13 @@
  */
 
 import { loadState, saveState, createDefaultState } from './state.js';
-import { FLOOR_DIMS, getMachineById } from './floor.js';
+import {
+  GYM_MACHINES,
+  getMachineById,
+  getEffectivePos,
+  getEffectiveFloorDims,
+  buildFloorDiffSummary,
+} from './floor.js';
 import { GOAL_PROFILES, getMesocyclePhase, nudgeWeightKg, evaluateHrRestBrake } from './science.js';
 import {
   createDynamicSession,
@@ -38,7 +44,9 @@ const state = loadState();
 
 let activeModal = null; // 'goal' | 'floor' | 'pain' | 'plan' | 'wearable' | 'form'
 let editFloorPins = false;
+let selectedFloorEditId = null;
 let draggingMachineId = null;
+let didDragPin = false;
 let briefingView = 'plan'; // 'plan' | 'map'
 let formUi = { tab: 'guide', machineId: null, query: '', rawText: '' };
 let toastTimer = null;
@@ -201,7 +209,7 @@ function refreshOpenModal() {
   if (activeModal === 'goal') {
     modalBodyEl.innerHTML = renderGoalModalBody(state);
   } else if (activeModal === 'floor') {
-    modalBodyEl.innerHTML = renderFloorModalBody(state, sess, editFloorPins);
+    modalBodyEl.innerHTML = renderFloorModalBody(state, sess, editFloorPins, selectedFloorEditId);
   } else if (activeModal === 'pain') {
     modalBodyEl.innerHTML = renderPainModalBody(state);
   } else if (activeModal === 'plan') {
@@ -643,10 +651,35 @@ document.addEventListener('click', (event) => {
       break;
     }
 
-    // Floor calibration controls
+    // Floor calibration & propose-changes controls
     case 'toggle-floor-edit': {
       editFloorPins = !editFloorPins;
+      if (editFloorPins && !selectedFloorEditId) {
+        selectedFloorEditId = getActiveStep(sess)?.stationId || GYM_MACHINES[0].id;
+      }
       refreshOpenModal();
+      break;
+    }
+    case 'copy-floor-diff': {
+      const diff = buildFloorDiffSummary(state.floorOverrides);
+      if (!diff) {
+        showToast('No layout edits yet');
+        break;
+      }
+      if (navigator.clipboard?.writeText) {
+        navigator.clipboard
+          .writeText(diff)
+          .then(() => showToast('Copied proposed changes — paste in chat!'))
+          .catch(() => showToast('Could not access clipboard'));
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = diff;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
+        showToast('Copied proposed changes — paste in chat!');
+      }
       break;
     }
     case 'reset-floor-pins': {
@@ -845,11 +878,59 @@ modalBodyEl.addEventListener('submit', (event) => {
 });
 
 modalBodyEl.addEventListener('change', (event) => {
-  if (event.target.id === 'form-station-select') {
+  const id = event.target.id;
+  if (id === 'form-station-select') {
     formUi.machineId = event.target.value;
     formUi.query = '';
     formUi.rawText = '';
     refreshOpenModal();
+    return;
+  }
+
+  if (id === 'floor-station-select') {
+    selectedFloorEditId = event.target.value;
+    refreshOpenModal();
+    return;
+  }
+
+  if (id === 'floor-matrix-select' || id === 'floor-pos-x' || id === 'floor-pos-y' || id === 'floor-note-input') {
+    const sess = ensureSession();
+    const selId = selectedFloorEditId || getActiveStep(sess)?.stationId || GYM_MACHINES[0].id;
+    selectedFloorEditId = selId;
+    const baseM = getMachineById(selId) || GYM_MACHINES[0];
+    const curOv = { ...(state.floorOverrides[selId] || {}) };
+    const curPos = getEffectivePos(baseM, state.floorOverrides);
+
+    if (id === 'floor-matrix-select') {
+      curOv.matrixCode = event.target.value;
+    } else if (id === 'floor-pos-x') {
+      curOv.x = Math.round((parseFloat(event.target.value) || curPos.x) * 10) / 10;
+      curOv.y = curPos.y;
+    } else if (id === 'floor-pos-y') {
+      curOv.x = curPos.x;
+      curOv.y = Math.round((parseFloat(event.target.value) || curPos.y) * 10) / 10;
+    } else if (id === 'floor-note-input') {
+      curOv.note = String(event.target.value || '').trim();
+    }
+
+    state.floorOverrides[selId] = curOv;
+    saveState(state);
+    refreshOpenModal();
+    renderStageOnly();
+    return;
+  }
+
+  if (id === 'floor-sec1-w' || id === 'floor-sec1-d' || id === 'floor-room-w' || id === 'floor-room-h') {
+    const curDims = getEffectiveFloorDims(state.floorOverrides);
+    const nextRoom = { ...(state.floorOverrides.__room || curDims) };
+    if (id === 'floor-sec1-w') nextRoom.sec1Width = parseFloat(event.target.value) || curDims.sec1Width;
+    if (id === 'floor-sec1-d') nextRoom.sec1Depth = parseFloat(event.target.value) || curDims.sec1Depth;
+    if (id === 'floor-room-w') nextRoom.width = parseFloat(event.target.value) || curDims.width;
+    if (id === 'floor-room-h') nextRoom.height = parseFloat(event.target.value) || curDims.height;
+    state.floorOverrides.__room = nextRoom;
+    saveState(state);
+    refreshOpenModal();
+    renderStageOnly();
   }
 });
 
@@ -858,6 +939,8 @@ modalBodyEl.addEventListener('pointerdown', (e) => {
   const pin = e.target.closest('[data-fp-machine]');
   if (!pin) return;
   draggingMachineId = pin.dataset.fpMachine;
+  selectedFloorEditId = draggingMachineId;
+  didDragPin = false;
   pin.setPointerCapture?.(e.pointerId);
 });
 
@@ -868,11 +951,14 @@ modalBodyEl.addEventListener('pointermove', (e) => {
   const rect = svg.getBoundingClientRect();
   if (!rect.width || !rect.height) return;
 
-  const normX = Math.max(0.04, Math.min(0.96, (e.clientX - rect.left) / rect.width));
-  const normY = Math.max(0.05, Math.min(0.95, (e.clientY - rect.top) / rect.height));
+  didDragPin = true;
+  const dims = getEffectiveFloorDims(state.floorOverrides);
+  const normX = Math.max(0.03, Math.min(0.97, (e.clientX - rect.left) / rect.width));
+  const normY = Math.max(0.04, Math.min(0.96, (e.clientY - rect.top) / rect.height));
   state.floorOverrides[draggingMachineId] = {
-    x: Math.round(normX * FLOOR_DIMS.width * 10) / 10,
-    y: Math.round(normY * FLOOR_DIMS.height * 10) / 10,
+    ...(state.floorOverrides[draggingMachineId] || {}),
+    x: Math.round(normX * dims.width * 10) / 10,
+    y: Math.round(normY * dims.height * 10) / 10,
   };
   refreshOpenModal();
 });
@@ -880,10 +966,13 @@ modalBodyEl.addEventListener('pointermove', (e) => {
 window.addEventListener('pointerup', () => {
   if (draggingMachineId) {
     const m = getMachineById(draggingMachineId);
+    const moved = didDragPin;
     draggingMachineId = null;
+    didDragPin = false;
     saveState(state);
+    refreshOpenModal();
     renderStageOnly();
-    if (m) showToast(`Moved ${m.shortName}`);
+    if (m && moved) showToast(`Moved ${m.shortName}`);
   }
 });
 
