@@ -15,7 +15,10 @@ import {
   FOCUS_AREAS,
   PAIN_LOCATIONS,
   MESOCYCLE_WEEKS,
+  STANDARD_MESO_WEEKS,
   getMesocyclePhase,
+  getHrBand,
+  getStepLabel,
   buildRepChoices,
   formatLoad,
   formatRepRange,
@@ -120,7 +123,7 @@ const PREWORKOUT_FEEDBACK_CHIPS = [
 function renderBriefingStage(state, session, wearableSnap, briefingView = 'plan') {
   const athlete = state.athlete;
   const unit = state.settings.unit;
-  const meso = getMesocyclePhase(session.mesoWeek || athlete.mesocycle?.week || 1);
+  const meso = getMesocyclePhase(session.mesoWeek || athlete.mesocycle?.week || 1, athlete.goal);
   const routeIds = session.steps.map((s) => s.stationId);
   const rd = session.readiness;
   const rdClass = rd.tier === 'prime' || rd.tier === 'ready' ? 'is-prime' : 'is-warn';
@@ -128,7 +131,7 @@ function renderBriefingStage(state, session, wearableSnap, briefingView = 'plan'
   const phaseLine =
     athlete.goal === 'max_strength'
       ? `Block ${meso.block} · ${meso.blockName} (Week ${meso.week} of 8)`
-      : `${GOAL_PROFILES[athlete.goal]?.name || 'Custom Plan'}`;
+      : `${GOAL_PROFILES[athlete.goal]?.short || 'Plan'} · ${meso.name} (Week ${meso.week} of 4)`;
 
   const splitBtns = Object.values(SPLIT_TEMPLATES)
     .map(
@@ -169,13 +172,14 @@ function renderBriefingStage(state, session, wearableSnap, briefingView = 'plan'
             if (st.type === 'warmup') {
               rxLine = `${Math.round(st.durationSec / 60)} min warm-up · ${st.hrBand.min}–${st.hrBand.max} bpm`;
             } else if (st.type === 'cardio') {
-              rxLine = `${Math.round(st.durationSec / 60)} min ${st.protocol === 'vo2_4x3' ? 'VO₂ intervals' : 'steady cardio'} · ${st.hrBand.min}–${st.hrBand.max} bpm`;
+              const isVo2 = String(st.protocol || '').startsWith('vo2');
+              rxLine = `${Math.round(st.durationSec / 60)} min ${isVo2 ? 'VO₂ intervals' : 'Zone 2 cardio'} · ${st.hrBand.min}–${st.hrBand.max} bpm`;
             } else {
               const work = st.sets.filter((s) => s.kind === 'work');
               const firstW = work[0] || {};
               const repStr = formatRepRange(firstW.repMin, firstW.repMax, firstW.targetReps);
               const loadTxt = formatLoad(m, firstW.weightKg || 0, unit).primary;
-              rxLine = `${work.length} sets × ${repStr} reps @ ${loadTxt}`;
+              rxLine = `${work.length} ${work.length === 1 ? 'set' : 'sets'} × ${repStr} reps @ ${loadTxt}`;
             }
             if (st.partner) {
               rxLine += ` · 👥 ${st.partner.stationName}`;
@@ -228,6 +232,8 @@ function renderBriefingStage(state, session, wearableSnap, briefingView = 'plan'
           <p class="station-setup">${esc(
             session.feedbackNote
               ? `Adjusted: ${session.feedbackNote}`
+              : session.isDeload
+              ? `${session.splitReason} · Deload week: smooth speed, stop at target reps`
               : `${session.splitReason} · Push ~1–2 reps shy of failure`
           )}</p>
         </div>
@@ -332,13 +338,14 @@ function renderActiveStepStage(state, session, timerSnap, wearableSnap) {
 
           <div class="hero-panel is-rest">
             <span class="hero-value">${formatClock(displaySec)}</span>
-            <span class="hero-sub">${
+            <span class="hero-sub">${esc(
               step.type === 'warmup'
                 ? `Easy warm-up · ${band.min}–${band.max} bpm`
-                : step.protocol === 'vo2_4x3'
-                ? `4 × 3 min hard · ${band.min}–${band.max} bpm`
-                : `Steady cardio · ${band.min}–${band.max} bpm`
-            }</span>
+                : step.heroLabel ||
+                  (String(step.protocol || '').startsWith('vo2')
+                    ? `VO₂ intervals · ${band.min}–${band.max} bpm`
+                    : `Steady Zone 2 · ${band.min}–${band.max} bpm`)
+            )}</span>
             ${
               isRunningThis
                 ? `<div class="rest-progress-track"><div class="rest-progress-fill" style="width:${Math.round(timerSnap.progress * 100)}%;"></div></div>`
@@ -381,7 +388,7 @@ function renderActiveStepStage(state, session, timerSnap, wearableSnap) {
   if (!info) return '';
   const curSet = info.set;
   const load = formatLoad(machine, curSet.weightKg, unit);
-  const stepInc = machine.stepKg || 2.5;
+  const stepLbl = getStepLabel(machine, unit);
   const workSets = step.sets.filter((s) => s.kind === 'work');
 
   const dotsHtml = workSets
@@ -427,7 +434,7 @@ function renderActiveStepStage(state, session, timerSnap, wearableSnap) {
           <div class="rx-load-row">
             ${
               machine.loadType !== 'bodyweight'
-                ? `<button type="button" class="load-step-btn" data-action="nudge-load" data-delta="${-stepInc}" aria-label="Decrease weight">−</button>`
+                ? `<button type="button" class="load-step-btn" data-action="nudge-load" data-dir="-1" aria-label="Decrease weight by ${esc(stepLbl)}" title="−${esc(stepLbl)}">−</button>`
                 : `<span style="width:48px;"></span>`
             }
             <div class="hero-center">
@@ -436,7 +443,7 @@ function renderActiveStepStage(state, session, timerSnap, wearableSnap) {
             </div>
             ${
               machine.loadType !== 'bodyweight'
-                ? `<button type="button" class="load-step-btn" data-action="nudge-load" data-delta="${stepInc}" aria-label="Increase weight">+</button>`
+                ? `<button type="button" class="load-step-btn" data-action="nudge-load" data-dir="1" aria-label="Increase weight by ${esc(stepLbl)}" title="+${esc(stepLbl)}">+</button>`
                 : `<span style="width:48px;"></span>`
             }
           </div>
@@ -449,6 +456,11 @@ function renderActiveStepStage(state, session, timerSnap, wearableSnap) {
                 ? `
                 <span class="rx-rep-goal">Do ${curSet.targetReps} easy warm-up reps</span>
                 <span class="rx-rep-rule">Light speed — don't push hard</span>
+              `
+                : session.isDeload
+                ? `
+                <span class="rx-rep-goal">Deload target: ${esc(repRangeStr)} reps</span>
+                <span class="rx-rep-rule">Recovery week — smooth speed, stop right at ${esc(repRangeStr)} reps</span>
               `
                 : `
                 <span class="rx-rep-goal">Aim for ${esc(repRangeStr)} reps</span>
@@ -510,9 +522,7 @@ function renderRestStage(state, session, timerSnap, wearableSnap) {
     ? `+${formatClock(timerSnap.overtimeSec)}`
     : formatClock(timerSnap.remainingSec);
 
-  const ceilingBpm = Math.round(
-    (state.athlete.todayRhr || 58) + 0.6 * ((state.athlete.maxHr || 188) - (state.athlete.todayRhr || 58))
-  );
+  const ceilingBpm = getHrBand(state.athlete, 0, 0.6).max;
 
   const subStatus = timerSnap.hrReason
     ? timerSnap.hrReason
@@ -664,8 +674,8 @@ function renderSummaryStage(state, session, wearableSnap) {
 export function renderGoalModalBody(state) {
   const a = state.athlete;
   const p = state.partner;
-  const curWeek = a.mesocycle?.week || 1;
-  const curMeso = getMesocyclePhase(curWeek);
+  const curMeso = getMesocyclePhase(a.mesocycle?.week || 1, a.goal);
+  const curWeek = curMeso.week;
 
   return `
     <form id="goal-form" class="sheet-section" style="gap:14px;">
@@ -692,11 +702,11 @@ export function renderGoalModalBody(state) {
           <div class="option-grid-2">
             <button type="button" class="option-card ${curMeso.block === 1 ? 'is-selected' : ''}" data-action="set-meso-block" data-block="1">
               <strong>Block 1 · Base (W1–W4)</strong>
-              <span>8–10 reps · Build tendons &amp; upper pull</span>
+              <span>8–10 → 6–8 reps · Muscle &amp; tendon base</span>
             </button>
             <button type="button" class="option-card ${curMeso.block === 2 ? 'is-selected' : ''}" data-action="set-meso-block" data-block="2">
               <strong>Block 2 · Max Neural (W5–W8)</strong>
-              <span>3–6 reps · Peak force, zero bulk</span>
+              <span>3–7 reps · Peak force, zero bulk</span>
             </button>
           </div>
           <div class="seg-row" style="margin-top:4px;">
@@ -709,9 +719,27 @@ export function renderGoalModalBody(state) {
               )
               .join('')}
           </div>
+          <div style="margin-top:4px;">
+            <button type="button" class="seg-btn ${a.inSeasonNeuralOnly ? 'is-active' : ''}" data-action="toggle-in-season">
+              In-Season Climbing Mode (Repeat W5–W8 Only): ${a.inSeasonNeuralOnly ? 'On' : 'Off'}
+            </button>
+          </div>
         </div>
       `
           : `
+        <div class="sheet-section">
+          <span class="sheet-label">4-Week Progressive &amp; Deload Cycle</span>
+          <div class="seg-row">
+            ${Object.values(STANDARD_MESO_WEEKS)
+              .map(
+                (w) => `
+                <button type="button" class="seg-btn ${curWeek === w.week ? 'is-active' : ''}" data-action="set-meso-week" data-week="${w.week}">
+                  ${esc(w.name)}
+                </button>`
+              )
+              .join('')}
+          </div>
+        </div>
         <div class="sheet-section">
           <span class="sheet-label">Priority Body Areas</span>
           <div class="pill-row">
@@ -740,18 +768,22 @@ export function renderGoalModalBody(state) {
 
       <div class="sheet-section">
         <span class="sheet-label">Weekly Cadence &amp; Recovery</span>
-        <div class="field-grid-3">
+        <div class="field-grid-2">
           <div class="field">
             <label for="in-days">Gym days/wk</label>
             <input id="in-days" name="daysPerWeek" class="field-input mono" type="number" min="2" max="6" value="${a.daysPerWeek || 3}" />
           </div>
           <div class="field">
-            <label for="in-rhr">Today RHR</label>
+            <label for="in-rhr">Today RHR (bpm)</label>
             <input id="in-rhr" name="todayRhr" class="field-input mono" type="number" min="35" max="110" value="${a.todayRhr || 58}" />
           </div>
           <div class="field">
-            <label for="in-hrv">HRV (ms)</label>
-            <input id="in-hrv" name="todayHrv" class="field-input mono" type="number" min="15" max="180" placeholder="${a.baselineHrv || 58}" value="${a.todayHrv || ''}" />
+            <label for="in-hrv">Today Resting HRV (ms)</label>
+            <input id="in-hrv" name="todayHrv" class="field-input mono" type="number" min="15" max="180" placeholder="Optional" value="${a.todayHrv || ''}" />
+          </div>
+          <div class="field">
+            <label for="in-base-hrv">Baseline HRV (ms)</label>
+            <input id="in-base-hrv" name="baselineHrv" class="field-input mono" type="number" min="15" max="180" value="${a.baselineHrv || 58}" />
           </div>
         </div>
       </div>
@@ -1033,7 +1065,7 @@ export function renderWearableModalBody(state, snap) {
       </div>
 
       <form id="wearable-hr-form" class="sheet-section">
-        <div class="field-grid-2">
+        <div class="field-grid-3">
           <div class="field">
             <label for="w-rhr">Resting HR</label>
             <input id="w-rhr" name="restingHr" class="field-input mono" type="number" min="35" max="110" value="${state.athlete.baselineRhr || 58}" />
@@ -1042,8 +1074,12 @@ export function renderWearableModalBody(state, snap) {
             <label for="w-mhr">Max HR</label>
             <input id="w-mhr" name="maxHr" class="field-input mono" type="number" min="120" max="220" value="${state.athlete.maxHr || 188}" />
           </div>
+          <div class="field">
+            <label for="w-hrv">Base HRV (ms)</label>
+            <input id="w-hrv" name="baselineHrv" class="field-input mono" type="number" min="15" max="180" value="${state.athlete.baselineHrv || 58}" />
+          </div>
         </div>
-        <button type="submit" class="btn btn-secondary btn-sm">Save HR Settings</button>
+        <button type="submit" class="btn btn-secondary btn-sm">Save HR &amp; HRV Settings</button>
       </form>
 
       ${
@@ -1074,7 +1110,7 @@ export function renderFormModalBody(state, session, formUi = {}) {
   const guide = getMachineGuide(machine.id);
   const tab = formUi.tab || 'guide'; // 'guide' | 'fix' | 'pain'
   const unit = state.settings.unit;
-  const inc = machine.stepKg || 2.5;
+  const stepLbl = getStepLabel(machine, unit);
   const pinnedCue = state.athlete.formNotes?.[machine.id]?.pinnedCue || '';
 
   const diagnosis = formUi.query ? diagnoseMachineIssue(machine, formUi.query) : null;
@@ -1201,7 +1237,7 @@ export function renderFormModalBody(state, session, formUi = {}) {
                 machine.loadType !== 'bodyweight' && machine.loadType !== 'cardio' && diagnosis.suggestDropLoad
                   ? `
                   <button type="button" class="btn btn-primary" data-action="apply-form-fix" data-cue="${esc(diagnosis.pinCue)}" data-drop="true">
-                    Save Reminder &amp; Lower −${inc} ${unit}
+                    Save Reminder &amp; Lower −${esc(stepLbl)}
                   </button>
                   <button type="button" class="btn btn-secondary btn-sm" data-action="apply-form-fix" data-cue="${esc(diagnosis.pinCue)}" data-drop="false">
                     Save Reminder Only

@@ -4,7 +4,7 @@
 
 import { loadState, saveState, createDefaultState } from './state.js';
 import { FLOOR_DIMS, getMachineById } from './floor.js';
-import { GOAL_PROFILES, getMesocyclePhase, evaluateHrRestBrake } from './science.js';
+import { GOAL_PROFILES, getMesocyclePhase, nudgeWeightKg, evaluateHrRestBrake } from './science.js';
 import {
   createDynamicSession,
   getActiveStep,
@@ -82,10 +82,10 @@ function ensureSession() {
 
 function syncHeader() {
   const goal = GOAL_PROFILES[state.athlete.goal] || GOAL_PROFILES.max_strength;
-  const meso = getMesocyclePhase(state.athlete.mesocycle?.week || 1);
+  const meso = getMesocyclePhase(state.athlete.mesocycle?.week || 1, state.athlete.goal);
   if (headerMesoTagEl) {
     headerMesoTagEl.textContent =
-      state.athlete.goal === 'max_strength' ? meso.headerTag : goal.short;
+      state.athlete.goal === 'max_strength' ? meso.headerTag : `${goal.short} · W${meso.week}/4`;
   }
 }
 
@@ -96,13 +96,11 @@ function syncHeader() {
 const wearable = new WearableManager(
   () => ({
     deviceType: state.wearable.deviceType,
-    restingHr: state.athlete.todayRhr || state.athlete.baselineRhr || 58,
+    restingHr: state.athlete.baselineRhr || state.athlete.todayRhr || 58,
     maxHr: state.athlete.maxHr || 188,
   }),
   (snap) => {
-    if (snap.hrvMs && !state.athlete.todayHrv) {
-      state.athlete.todayHrv = snap.hrvMs;
-    }
+    // Note: Live exercising RMSSD drops sharply from vagal withdrawal, so never overwrite resting `todayHrv` here.
     syncWearableUI(snap);
   }
 );
@@ -329,7 +327,13 @@ document.addEventListener('click', (event) => {
       const dropLoad = btn.dataset.drop === 'true';
       const curSt = getActiveStep(sess);
       if (curSt && (!formUi.machineId || formUi.machineId === curSt.stationId)) {
-        const msg = applyFormAdjustment(sess, state.athlete, { pinCue: cue, dropLoad }, state.floorOverrides);
+        const msg = applyFormAdjustment(
+          sess,
+          state.athlete,
+          { pinCue: cue, dropLoad },
+          state.floorOverrides,
+          state.settings.unit
+        );
         saveState(state);
         closeModal();
         renderAll();
@@ -457,14 +461,15 @@ document.addEventListener('click', (event) => {
 
     // Strength station controls (1-tap rep logging!)
     case 'nudge-load': {
-      const delta = Number(btn.dataset.delta) || 0;
+      const dir = Number(btn.dataset.dir ?? btn.dataset.delta ?? 1) >= 0 ? 1 : -1;
       const step = getActiveStep(sess);
       const info = getCurrentSetInfo(step);
       if (step && info) {
+        const machine = getMachineById(step.stationId);
         for (let i = info.arrayIndex; i < step.sets.length; i += 1) {
           const s = step.sets[i];
           if (!s.done && s.kind === info.set.kind) {
-            s.weightKg = Math.max(0, Math.round((s.weightKg + delta) * 10) / 10);
+            s.weightKg = nudgeWeightKg(machine, s.weightKg, dir, state.settings.unit);
           }
         }
         saveState(state);
@@ -564,7 +569,11 @@ document.addEventListener('click', (event) => {
 
     // Goal & 8-Week Block modal controls
     case 'set-athlete-goal': {
-      state.athlete.goal = btn.dataset.goal;
+      const nextGoal = btn.dataset.goal;
+      state.athlete.goal = nextGoal;
+      if (nextGoal !== 'max_strength' && state.athlete.mesocycle.week > 4) {
+        state.athlete.mesocycle.week = ((state.athlete.mesocycle.week - 1) % 4) + 1;
+      }
       saveState(state);
       refreshOpenModal();
       break;
@@ -572,6 +581,7 @@ document.addEventListener('click', (event) => {
     case 'set-meso-block': {
       const blk = parseInt(btn.dataset.block, 10) || 1;
       state.athlete.mesocycle.week = blk === 2 ? 5 : 1;
+      state.athlete.mesocycle.sessionInWeek = 1;
       saveState(state);
       refreshOpenModal();
       break;
@@ -579,6 +589,17 @@ document.addEventListener('click', (event) => {
     case 'set-meso-week': {
       const w = parseInt(btn.dataset.week, 10) || 1;
       state.athlete.mesocycle.week = w;
+      state.athlete.mesocycle.sessionInWeek = 1;
+      saveState(state);
+      refreshOpenModal();
+      break;
+    }
+    case 'toggle-in-season': {
+      state.athlete.inSeasonNeuralOnly = !state.athlete.inSeasonNeuralOnly;
+      if (state.athlete.inSeasonNeuralOnly && state.athlete.mesocycle.week < 5) {
+        state.athlete.mesocycle.week = 5;
+        state.athlete.mesocycle.sessionInWeek = 1;
+      }
       saveState(state);
       refreshOpenModal();
       break;
@@ -761,6 +782,10 @@ modalBodyEl.addEventListener('submit', (event) => {
     state.athlete.todayRhr = Math.min(110, Math.max(35, parseInt(String(fd.get('todayRhr')), 10) || 58));
     const hrvRaw = String(fd.get('todayHrv') || '').trim();
     state.athlete.todayHrv = hrvRaw ? Math.min(180, Math.max(15, parseInt(hrvRaw, 10))) : null;
+    const baseHrvRaw = String(fd.get('baselineHrv') || '').trim();
+    if (baseHrvRaw) {
+      state.athlete.baselineHrv = Math.min(180, Math.max(15, parseInt(baseHrvRaw, 10) || 58));
+    }
 
     if (state.partner.enabled) {
       state.partner.name = String(fd.get('partnerName') || 'Partner').trim() || 'Partner';
@@ -776,14 +801,21 @@ modalBodyEl.addEventListener('submit', (event) => {
   if (event.target.id === 'wearable-hr-form') {
     const rhr = Math.min(110, Math.max(35, parseInt(String(fd.get('restingHr')), 10) || 58));
     const mhr = Math.min(220, Math.max(120, parseInt(String(fd.get('maxHr')), 10) || 188));
+    const baseHrvRaw = String(fd.get('baselineHrv') || '').trim();
+    const prevBase = state.athlete.baselineRhr;
     state.athlete.baselineRhr = rhr;
-    state.athlete.todayRhr = rhr;
+    if (!state.athlete.todayRhr || state.athlete.todayRhr === prevBase) {
+      state.athlete.todayRhr = rhr;
+    }
     state.athlete.maxHr = mhr;
+    if (baseHrvRaw) {
+      state.athlete.baselineHrv = Math.min(180, Math.max(15, parseInt(baseHrvRaw, 10) || 58));
+    }
     state.wearable.restingHr = rhr;
     state.wearable.maxHr = mhr;
     saveState(state);
     syncWearableUI(wearable.getSnapshot());
-    showToast('HR settings saved');
+    showToast('HR & HRV settings saved');
     return;
   }
 

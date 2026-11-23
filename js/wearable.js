@@ -144,19 +144,19 @@ export function computeHrZone(bpm, restingHr = 60, maxHr = 188) {
   const hrr = Math.max(0, Math.min(1.15, (b - rhr) / (mhr - rhr)));
   const pct = Math.round(hrr * 100);
 
-  if (hrr < 0.5) {
-    return { zone: 1, decimal: +(1 + (hrr / 0.5) * 0.9).toFixed(1), label: 'Recovery', pct, color: 'var(--success)' };
+  if (hrr < 0.52) {
+    return { zone: 1, decimal: +(1 + (hrr / 0.52) * 0.9).toFixed(1), label: 'Easy / Warm-up', pct, color: 'var(--success)' };
   }
-  if (hrr < 0.65) {
-    return { zone: 2, decimal: +(2 + ((hrr - 0.5) / 0.15) * 0.9).toFixed(1), label: 'Fat Burn', pct, color: 'hsl(188, 72%, 48%)' };
+  if (hrr <= 0.7) {
+    return { zone: 2, decimal: +(2 + ((hrr - 0.52) / 0.18) * 0.9).toFixed(1), label: 'Zone 2 Steady', pct, color: 'hsl(188, 72%, 48%)' };
   }
-  if (hrr < 0.8) {
-    return { zone: 3, decimal: +(3 + ((hrr - 0.65) / 0.15) * 0.9).toFixed(1), label: 'Cardio', pct, color: 'var(--warning)' };
+  if (hrr < 0.82) {
+    return { zone: 3, decimal: +(3 + ((hrr - 0.7) / 0.12) * 0.9).toFixed(1), label: 'Moderate', pct, color: 'var(--warning)' };
   }
-  if (hrr < 0.9) {
-    return { zone: 4, decimal: +(4 + ((hrr - 0.8) / 0.1) * 0.9).toFixed(1), label: 'Hard', pct, color: 'var(--accent)' };
+  if (hrr < 0.92) {
+    return { zone: 4, decimal: +(4 + ((hrr - 0.82) / 0.1) * 0.9).toFixed(1), label: 'Hard / VO₂', pct, color: 'var(--accent)' };
   }
-  return { zone: 5, decimal: Math.min(5.9, +(5 + ((hrr - 0.9) / 0.15) * 0.9).toFixed(1)), label: 'Peak', pct, color: 'var(--danger)' };
+  return { zone: 5, decimal: Math.min(5.9, +(5 + ((hrr - 0.92) / 0.12) * 0.9).toFixed(1)), label: 'Max Effort', pct, color: 'var(--danger)' };
 }
 
 export class WearableManager {

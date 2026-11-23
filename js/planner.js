@@ -1,5 +1,6 @@
 /**
- * Weights — AI Dynamic Session Director (8-Week Periodization + 1-Tap Rep Autoregulation)
+ * Weights — AI Dynamic Session Director
+ * 8-Week Climber Periodization + 4-Week Standard Cycle + Neuromuscular Priority Ordering + Step-Aware Autoregulation
  */
 
 import {
@@ -15,8 +16,13 @@ import {
   FOCUS_AREAS,
   getMesocyclePhase,
   evaluateReadiness,
+  totalMechanicalKg,
+  displayedFromTotalKg,
   estimate1RM,
   roundToStep,
+  getStepLabel,
+  nudgeWeightKg,
+  resolveMachineE1rm,
   getHrBand,
   prescribeStation,
   formatRelativeDays,
@@ -32,6 +38,7 @@ export const SPLIT_TEMPLATES = {
     name: 'Upper Pull, Chest & Core',
     short: 'A · Upper + Core',
     candidates: ['m_lat_pull', 'm_chest_press', 'm_low_row', 'm_abs_mat', 'm_cable_pull', 'm_butterfly'],
+    hypertrophyCandidates: ['m_lat_pull', 'm_chest_press', 'm_low_row', 'm_butterfly', 'm_ab_crunch', 'm_cable_pull'],
     cardioMode: 'zone2',
   },
   finger_safe_lower: {
@@ -40,6 +47,7 @@ export const SPLIT_TEMPLATES = {
     name: 'Legs, Heel-Hook & Shoulders',
     short: 'B · Legs + Cuff',
     candidates: ['m_leg_press', 'm_leg_curl', 'm_cable_pull', 'm_calf', 'm_lower_back', 'm_leg_ext'],
+    hypertrophyCandidates: ['m_leg_press', 'm_leg_curl', 'm_leg_ext', 'm_calf', 'm_cable_pull', 'm_lower_back'],
     cardioMode: 'zone2',
   },
   power_vo2: {
@@ -47,7 +55,8 @@ export const SPLIT_TEMPLATES = {
     code: 'C',
     name: 'Full-Body Power + VO₂max',
     short: 'C · Power + VO₂',
-    candidates: ['m_pullup', 'm_hip_thrust', 'm_smith_incline', 'm_abs_mat', 'm_leg_curl'],
+    candidates: ['m_pullup', 'm_hip_thrust', 'm_smith_incline', 'm_ab_crunch', 'm_leg_curl', 'm_abs_mat'],
+    hypertrophyCandidates: ['m_pullup', 'm_hip_thrust', 'm_smith_incline', 'm_leg_curl', 'm_ab_crunch', 'm_abs_mat'],
     cardioMode: 'vo2_4x3',
   },
   cardio_core: {
@@ -56,6 +65,7 @@ export const SPLIT_TEMPLATES = {
     name: 'Active Recovery · Cardio & Core',
     short: 'Recovery',
     candidates: ['m_abs_mat', 'm_cable_pull', 'm_calf'],
+    hypertrophyCandidates: ['m_abs_mat', 'm_cable_pull', 'm_calf'],
     cardioMode: 'dedicated',
   },
 };
@@ -86,25 +96,15 @@ export function recommendTodaySplit(athlete, readiness, now = Date.now()) {
     };
   }
 
-  if (
-    athlete.goal === 'body_focus' &&
-    (athlete.focusAreas || []).includes('glutes') &&
-    normalizeSplitId(athlete.lastSplitId) !== 'finger_safe_lower'
-  ) {
-    return {
-      splitId: 'finger_safe_lower',
-      reason: 'Glutes & lower-body priority',
-    };
-  }
-
   const normLast = normalizeSplitId(athlete.lastSplitId);
-  const lastIdx = SPLIT_ROTATION.indexOf(normLast);
+  const rotLast = SPLIT_ROTATION.includes(normLast) ? normLast : 'finger_safe_lower';
+  const lastIdx = SPLIT_ROTATION.indexOf(rotLast);
   const nextSplit = SPLIT_ROTATION[(lastIdx + 1) % SPLIT_ROTATION.length];
 
   const reasonMap = {
     upper_push_pull: `Last workout ${formatRelativeDays(athlete.lastWorkoutAt, now)} · Upper body fresh`,
     finger_safe_lower: `Last workout ${formatRelativeDays(athlete.lastWorkoutAt, now)} · Finger-safe legs & shoulders`,
-    power_vo2: `Full-body strength + weekly VO₂max intervals`,
+    power_vo2: `Full-body strength + weekly intervals`,
   };
 
   return {
@@ -123,16 +123,35 @@ function isJointFlagActive(athlete, machine, now = Date.now()) {
   return null;
 }
 
-function orderStationsSpatially(stations, startMachine, floorOverrides = {}) {
-  const compounds = stations.filter((s) => s.compound);
-  const accessories = stations.filter((s) => !s.compound);
+/**
+ * Order exercises by neuromuscular priority FIRST (compounds ranked by goal.priorityMovements,
+ * then Tier 3 posterior chain, then Tier 4 isolation), using gym floor walking distance only
+ * as a tie-breaker within equal priority!
+ * Ensures Climbers always hit Lat Pulldown / Close Pulldown fresh BEFORE Chest Press or Hip Thrust.
+ */
+function orderStationsByPriorityAndFloor(stations, goalId, floorOverrides = {}) {
+  if (!stations.length) return [];
+  const goal = GOAL_PROFILES[goalId] || GOAL_PROFILES.max_strength;
+  const prioList = goal.priorityMovements || [];
+  const movRank = (m) => {
+    const idx = prioList.indexOf(m.movement);
+    return idx === -1 ? 99 : idx;
+  };
 
-  const greedyPath = (list, fromNode) => {
+  const compounds = stations.filter((s) => s.compound);
+  const posterior = stations.filter((s) => !s.compound && s.tier === 't3_posterior');
+  const isolation = stations.filter((s) => !s.compound && s.tier !== 't3_posterior');
+
+  const orderByRankThenDist = (list, startNode) => {
     const pool = [...list];
     const ordered = [];
-    let cur = fromNode;
+    let cur = startNode;
     while (pool.length) {
-      pool.sort((a, b) => distanceMeters(cur, a, floorOverrides) - distanceMeters(cur, b, floorOverrides));
+      pool.sort((a, b) => {
+        const rDiff = movRank(a) - movRank(b);
+        if (rDiff !== 0) return rDiff;
+        return cur ? distanceMeters(cur, a, floorOverrides) - distanceMeters(cur, b, floorOverrides) : 0;
+      });
       const next = pool.shift();
       ordered.push(next);
       cur = next;
@@ -140,14 +159,32 @@ function orderStationsSpatially(stations, startMachine, floorOverrides = {}) {
     return ordered;
   };
 
-  const orderedCompounds = greedyPath(compounds, startMachine);
-  const lastComp = orderedCompounds[orderedCompounds.length - 1] || startMachine;
-  const orderedAccessories = greedyPath(accessories, lastComp);
-  return [...orderedCompounds, ...orderedAccessories];
+  const greedyFloor = (list, startNode) => {
+    const pool = [...list];
+    const ordered = [];
+    let cur = startNode;
+    while (pool.length) {
+      if (cur) {
+        pool.sort((a, b) => distanceMeters(cur, a, floorOverrides) - distanceMeters(cur, b, floorOverrides));
+      }
+      const next = pool.shift();
+      ordered.push(next);
+      cur = next;
+    }
+    return ordered;
+  };
+
+  const orderedCompounds = orderByRankThenDist(compounds, null);
+  const afterComp = orderedCompounds[orderedCompounds.length - 1] || null;
+  const orderedPosterior = orderByRankThenDist(posterior, afterComp);
+  const afterPost = orderedPosterior[orderedPosterior.length - 1] || afterComp;
+  const orderedIsolation = greedyFloor(isolation, afterPost);
+
+  return [...orderedCompounds, ...orderedPosterior, ...orderedIsolation];
 }
 
-function pickWarmupMachine(athlete, splitId, firstLift, floorOverrides = {}, now = Date.now()) {
-  if (splitId === 'finger_safe_lower') {
+function pickWarmupMachine(athlete, splitId, firstLift, meso, floorOverrides = {}, now = Date.now()) {
+  if (splitId === 'finger_safe_lower' || meso?.deload) {
     const bike = getMachineById('c_bike');
     if (bike && !isJointFlagActive(athlete, bike, now)) return bike;
   }
@@ -156,16 +193,24 @@ function pickWarmupMachine(athlete, splitId, firstLift, floorOverrides = {}, now
     .filter((m) => m && !isJointFlagActive(athlete, m, now));
 
   const pool = options.length ? options : [getMachineById('c_bike')];
-  if (athlete.goal === 'max_strength' && pool.some((m) => m.id === 'c_rower')) {
+  if (athlete.goal === 'max_strength' && firstLift?.zone === 'pull' && pool.some((m) => m.id === 'c_rower')) {
     return pool.find((m) => m.id === 'c_rower');
   }
-  pool.sort((a, b) => distanceMeters(a, firstLift, floorOverrides) - distanceMeters(b, firstLift, floorOverrides));
+  if (firstLift) {
+    pool.sort((a, b) => distanceMeters(a, firstLift, floorOverrides) - distanceMeters(b, firstLift, floorOverrides));
+  }
   return pool[0];
 }
 
-function pickCardioMachine(athlete, mode, floorOverrides = {}, now = Date.now()) {
-  const preferIds =
-    mode === 'vo2_4x3' ? ['c_treadmill', 'c_climbmill', 'c_bike'] : ['c_climbmill', 'c_bike', 'c_treadmill'];
+function pickCardioMachine(athlete, protocol, meso, floorOverrides = {}, now = Date.now()) {
+  const isVo2 = String(protocol || '').startsWith('vo2');
+  const preferLowImpact = Boolean(meso?.deload || (athlete.goal === 'max_strength' && meso?.block === 2 && meso?.week >= 6));
+  const preferIds = preferLowImpact
+    ? ['c_bike', 'c_climbmill', 'c_treadmill']
+    : isVo2
+    ? ['c_treadmill', 'c_climbmill', 'c_bike']
+    : ['c_climbmill', 'c_bike', 'c_treadmill'];
+
   for (const id of preferIds) {
     const m = getMachineById(id);
     if (m && !isJointFlagActive(athlete, m, now)) return m;
@@ -173,11 +218,28 @@ function pickCardioMachine(athlete, mode, floorOverrides = {}, now = Date.now())
   return getMachineById('c_bike');
 }
 
+function calcWarmupDisplayedKg(machine, workDisplayedKg, fraction) {
+  if (!machine || machine.loadType === 'bodyweight' || workDisplayedKg <= 0) return 0;
+  const stepInc = machine.stepKg || 2.5;
+  const totalWork = totalMechanicalKg(machine, workDisplayedKg);
+  const rawDisp = displayedFromTotalKg(machine, totalWork * fraction);
+  const allowZero = machine.loadType === 'plate_per_side' && (Number(machine.tareKg) || 0) >= 15;
+  const rounded = roundToStep(rawDisp, stepInc, allowZero);
+  if (rounded >= workDisplayedKg && workDisplayedKg > stepInc) {
+    return roundToStep(workDisplayedKg - stepInc, stepInc, allowZero);
+  }
+  return rounded;
+}
+
 export function buildLiftSets(machine, rx) {
   const sets = [];
-  const stepInc = machine.stepKg || 2.5;
 
   if (rx.warmupCount >= 2) {
+    const w1 = calcWarmupDisplayedKg(machine, rx.weightKg, 0.5);
+    let w2 = calcWarmupDisplayedKg(machine, rx.weightKg, 0.75);
+    if (w2 <= w1 && rx.weightKg - w1 >= (machine.stepKg || 2.5) * 2) {
+      w2 = roundToStep(w1 + (machine.stepKg || 2.5), machine.stepKg || 2.5);
+    }
     sets.push({
       kind: 'warmup',
       warmupIndex: 1,
@@ -185,7 +247,7 @@ export function buildLiftSets(machine, rx) {
       targetReps: 8,
       repMin: 8,
       repMax: 8,
-      weightKg: roundToStep(rx.weightKg * 0.5, stepInc),
+      weightKg: w1,
       rir: 5,
       restSec: 45,
       done: false,
@@ -198,7 +260,7 @@ export function buildLiftSets(machine, rx) {
       targetReps: 4,
       repMin: 4,
       repMax: 4,
-      weightKg: roundToStep(rx.weightKg * 0.75, stepInc),
+      weightKg: w2,
       rir: 4,
       restSec: 60,
       done: false,
@@ -212,7 +274,7 @@ export function buildLiftSets(machine, rx) {
       targetReps: 8,
       repMin: 8,
       repMax: 8,
-      weightKg: roundToStep(rx.weightKg * 0.55, stepInc),
+      weightKg: calcWarmupDisplayedKg(machine, rx.weightKg, 0.58),
       rir: 4,
       restSec: 50,
       done: false,
@@ -237,7 +299,7 @@ export function buildLiftSets(machine, rx) {
   return sets;
 }
 
-function attachPartnerAssignments(steps, primaryAthlete, partner, floorOverrides = {}, now = Date.now()) {
+function attachPartnerAssignments(steps, primaryAthlete, partner, floorOverrides = {}, unit = 'kg', now = Date.now()) {
   if (!partner?.enabled) return;
   const partnerReadiness = evaluateReadiness(partner, null, now);
   const usedIds = new Set();
@@ -301,7 +363,7 @@ function attachPartnerAssignments(steps, primaryAthlete, partner, floorOverrides
       usedIds.add(bestM.id);
       const rx = prescribeStation(bestM, partner, partnerReadiness, { now });
       const matchedSets = Math.max(2, Math.min(4, Math.round(primarySec / (35 + rx.restSec))));
-      const loadStr = formatLoad(bestM, rx.weightKg, 'kg').primary;
+      const loadStr = formatLoad(bestM, rx.weightKg, unit).primary;
       step.partner = {
         name: partner.name || 'Partner',
         stationId: bestM.id,
@@ -318,9 +380,86 @@ function attachPartnerAssignments(steps, primaryAthlete, partner, floorOverrides
   }
 }
 
+/**
+ * Build coherent cardio protocol + duration matching cardioGoal, session duration, and mesocycle phase.
+ */
+function resolveCardioPrescription(split, cardioProfile, targetMinutes, meso, athlete) {
+  if (split.cardioMode === 'dedicated') {
+    const mins = Math.max(15, Math.min(targetMinutes - 12, cardioProfile.dedicatedMin));
+    const hb = getHrBand(athlete, 0.6, 0.7);
+    return {
+      cardioMin: mins,
+      protocol: 'zone2',
+      hrBand: hb,
+      cue: `Steady conversational pace (${hb.min}–${hb.max} bpm)`,
+      heroLabel: `Steady Zone 2 · ${hb.min}–${hb.max} bpm`,
+    };
+  }
+
+  if (cardioProfile.finisherMin <= 0) {
+    return { cardioMin: 0, protocol: 'none', hrBand: null, cue: '', heroLabel: '' };
+  }
+
+  // Respect Zone 2 Fat Burn preference & avoid high-strain VO2 intervals during Deload weeks
+  const wantsVo2 =
+    split.cardioMode === 'vo2_4x3' &&
+    cardioProfile.id === 'cardio_health' &&
+    !meso.deload;
+
+  if (!wantsVo2) {
+    const mins =
+      targetMinutes <= 32
+        ? 8
+        : cardioProfile.id === 'fat_burn'
+        ? targetMinutes >= 55
+          ? 16
+          : 14
+        : athlete.goal === 'hypertrophy'
+        ? 10
+        : Math.min(12, cardioProfile.finisherMin);
+    const hb = getHrBand(athlete, 0.6, 0.7);
+    return {
+      cardioMin: mins,
+      protocol: 'zone2',
+      hrBand: hb,
+      cue: `Steady conversational pace (${hb.min}–${hb.max} bpm)`,
+      heroLabel: `Steady Zone 2 · ${hb.min}–${hb.max} bpm`,
+    };
+  }
+
+  // Coherent VO2max intervals scaled to available duration
+  const hb = getHrBand(athlete, 0.82, 0.92);
+  if (targetMinutes >= 55) {
+    return {
+      cardioMin: 18,
+      protocol: 'vo2_4x3',
+      hrBand: hb,
+      cue: `4 rounds: 3 min hard (${hb.min}–${hb.max} bpm) + 1.5 min easy`,
+      heroLabel: `4 × 3 min VO₂ · ${hb.min}–${hb.max} bpm`,
+    };
+  }
+  if (targetMinutes >= 42) {
+    return {
+      cardioMin: 14,
+      protocol: 'vo2_3x3',
+      hrBand: hb,
+      cue: `3 rounds: 3 min hard (${hb.min}–${hb.max} bpm) + 1.5 min easy`,
+      heroLabel: `3 × 3 min VO₂ · ${hb.min}–${hb.max} bpm`,
+    };
+  }
+  return {
+    cardioMin: 8,
+    protocol: 'vo2_4x1',
+    hrBand: hb,
+    cue: `4 rounds: 1 min hard (${hb.min}–${hb.max} bpm) + 1 min easy`,
+    heroLabel: `4 × 1 min VO₂ · ${hb.min}–${hb.max} bpm`,
+  };
+}
+
 export function createDynamicSession(state, options = {}) {
   const now = options.now || Date.now();
   const athlete = state.athlete;
+  const unit = state.settings?.unit || 'kg';
   const floorOverrides = state.floorOverrides || {};
   const readiness = evaluateReadiness(athlete, options.liveWearable || null, now);
   const rec = recommendTodaySplit(athlete, readiness, now);
@@ -329,42 +468,55 @@ export function createDynamicSession(state, options = {}) {
   const split = SPLIT_TEMPLATES[requestedSplit] || SPLIT_TEMPLATES.upper_push_pull;
   const targetMinutes = Number(options.durationMin || athlete.targetMinutes) || 45;
   const cardioProfile = CARDIO_PROFILES[athlete.cardioGoal] || CARDIO_PROFILES.cardio_health;
-  const meso = getMesocyclePhase(athlete.mesocycle?.week || 1);
+  const meso = getMesocyclePhase(athlete.mesocycle?.week || 1, athlete.goal);
 
-  const cardioMin =
-    split.cardioMode === 'dedicated'
-      ? Math.max(15, Math.min(targetMinutes - 14, cardioProfile.dedicatedMin))
-      : cardioProfile.finisherMin > 0
-      ? split.cardioMode === 'vo2_4x3' && targetMinutes >= 42
-        ? 16
-        : targetMinutes <= 32
-        ? 8
-        : Math.min(12, cardioProfile.finisherMin)
-      : 0;
+  const cardioRx = resolveCardioPrescription(split, cardioProfile, targetMinutes, meso, athlete);
+  const cardioMin = cardioRx.cardioMin;
 
   const warmupMin = targetMinutes <= 32 ? 4 : 5;
   const liftBudgetMin = Math.max(10, targetMinutes - warmupMin - cardioMin);
-  const stationMinutesAvg = meso.block === 2 && athlete.goal === 'max_strength' ? 8.2 : 6.8;
+  const stationMinutesAvg =
+    meso.block === 2 && athlete.goal === 'max_strength'
+      ? 8.0
+      : athlete.goal === 'hypertrophy'
+      ? 6.0
+      : 6.7;
+
   const maxLiftCount =
     split.cardioMode === 'dedicated'
       ? 2
       : Math.max(2, Math.min(5, Math.round(liftBudgetMin / stationMinutesAvg)));
 
-  const chosenMachines = [];
-  const usedIds = new Set();
+  const baseCandidates =
+    athlete.goal === 'hypertrophy' && split.hypertrophyCandidates
+      ? [...split.hypertrophyCandidates]
+      : [...split.candidates];
 
-  let candidateIds = [...split.candidates];
+  let candidateIds = [...baseCandidates];
+
+  // Constrained Body Focus: preserve first 2 split-skeleton compounds for upper/lower balance,
+  // then inject up to 2 focus stations (preventing 4 lower/lumbar machines on Upper Day).
   if (athlete.goal === 'body_focus' && split.cardioMode !== 'dedicated') {
-    const focusFirst = GYM_MACHINES.filter(
+    const skeletonKeep = baseCandidates.slice(0, 2);
+    const focusMatches = GYM_MACHINES.filter(
       (m) =>
         m.loadType !== 'cardio' &&
+        !skeletonKeep.includes(m.id) &&
+        m.id !== 'm_lower_back' &&
         (athlete.focusAreas || []).some((aId) => {
           const area = FOCUS_AREAS.find((f) => f.id === aId);
           return area?.muscles.some((mus) => (m.muscles?.[mus] || 0) >= 0.7);
         })
-    ).map((m) => m.id);
-    candidateIds = [...new Set([...focusFirst, ...candidateIds])];
+    )
+      .sort((a, b) => (b.compound ? 1 : 0) - (a.compound ? 1 : 0))
+      .slice(0, 2)
+      .map((m) => m.id);
+
+    candidateIds = [...new Set([...skeletonKeep, ...focusMatches, ...baseCandidates])];
   }
+
+  const chosenMachines = [];
+  const usedIds = new Set();
 
   for (const id of candidateIds) {
     if (chosenMachines.length >= maxLiftCount) break;
@@ -387,9 +539,9 @@ export function createDynamicSession(state, options = {}) {
     }
   }
 
-  const warmupSeed = chosenMachines[0] || getMachineById('m_abs_mat');
-  const warmupMachine = pickWarmupMachine(athlete, split.id, warmupSeed, floorOverrides, now);
-  const orderedLifts = orderStationsSpatially(chosenMachines, warmupMachine, floorOverrides);
+  const orderedLifts = orderStationsByPriorityAndFloor(chosenMachines, athlete.goal, floorOverrides);
+  const warmupSeed = orderedLifts[0] || getMachineById('m_abs_mat');
+  const warmupMachine = pickWarmupMachine(athlete, split.id, warmupSeed, meso, floorOverrides, now);
 
   const steps = [];
   const z12 = getHrBand(athlete, 0.45, 0.62);
@@ -403,7 +555,9 @@ export function createDynamicSession(state, options = {}) {
     durationSec: warmupMin * 60,
     hrBand: z12,
     setup: warmupMachine.setup,
-    cue: athlete.formNotes?.[warmupMachine.id]?.pinnedCue || `Easy progressive pace (${z12.min}–${z12.max} bpm) to warm joints`,
+    cue:
+      athlete.formNotes?.[warmupMachine.id]?.pinnedCue ||
+      `Easy progressive pace (${z12.min}–${z12.max} bpm) to warm joints`,
     done: false,
   });
 
@@ -424,6 +578,7 @@ export function createDynamicSession(state, options = {}) {
       cue: pinnedCue || m.cue,
       pct1RM: rx.pct1RM,
       seedE1rm: rx.e1rm,
+      isDiscounted: Boolean(rx.isDiscounted),
       sets,
       liveNote: pinnedCue ? `Pinned cue: ${pinnedCue}` : '',
       done: false,
@@ -432,32 +587,27 @@ export function createDynamicSession(state, options = {}) {
   });
 
   if (cardioMin >= 6) {
-    const cMode = split.cardioMode === 'vo2_4x3' ? 'vo2_4x3' : 'zone2';
-    const cardioM = pickCardioMachine(athlete, cMode, floorOverrides, now);
+    const cardioM = pickCardioMachine(athlete, cardioRx.protocol, meso, floorOverrides, now);
     const walkM = distanceMeters(prevMachine, cardioM, floorOverrides);
-    const hrBand =
-      cMode === 'vo2_4x3' ? getHrBand(athlete, 0.82, 0.92) : getHrBand(athlete, 0.6, 0.7);
 
     steps.push({
       id: 'step_cardio',
       type: 'cardio',
-      protocol: cMode,
+      protocol: cardioRx.protocol,
+      heroLabel: cardioRx.heroLabel,
       stationId: cardioM.id,
       zoneCode: getZoneInfo(cardioM.zone).code,
       walkMeters: walkM,
       prevStationId: prevMachine.id,
       durationSec: cardioMin * 60,
-      hrBand,
+      hrBand: cardioRx.hrBand,
       setup: cardioM.setup,
-      cue:
-        cMode === 'vo2_4x3'
-          ? `4 rounds: 3 min hard (${hrBand.min}–${hrBand.max} bpm) + 2 min easy`
-          : `Steady conversational pace (${hrBand.min}–${hrBand.max} bpm)`,
+      cue: cardioRx.cue,
       done: false,
     });
   }
 
-  attachPartnerAssignments(steps, athlete, state.partner, floorOverrides, now);
+  attachPartnerAssignments(steps, athlete, state.partner, floorOverrides, unit, now);
 
   const estSec = steps.reduce((sum, st) => {
     if (st.type === 'warmup' || st.type === 'cardio') return sum + st.durationSec;
@@ -477,6 +627,8 @@ export function createDynamicSession(state, options = {}) {
     mesoBlock: meso.block,
     mesoName: meso.name,
     mesoSummary: meso.summary,
+    isDeload: Boolean(meso.deload),
+    isDiscounted: Boolean(meso.deload || readiness.loadMult < 1.0),
     readiness,
     durationTargetMin: targetMinutes,
     estimatedMin: Math.max(15, Math.round(estSec / 60)),
@@ -526,8 +678,9 @@ function recomputeWalkDistances(session, floorOverrides = {}) {
 
 /**
  * 1-Tap Rep-Count Set Logger & Live Weight Autoregulator:
- * Since the user always stops ~1–2 reps before failure (when speed slows),
- * completed rep count relative to [repMin, repMax] automatically drives weight adjustments.
+ * - Disables intra-session weight increases during Deload weeks (`session.isDeload`).
+ * - Marks early-failure sets (`actualReps <= repMin - 2`) so `updateAthleteLiftFromStep` uses `rir = 0`.
+ * - Uses unit-clean stepping (`2.5 kg` or `5 lb`/`2.5 lb`).
  */
 export function recordLiftSetAndAdapt(session, athlete, { actualReps }, unit = 'kg') {
   const step = getActiveStep(session);
@@ -544,7 +697,7 @@ export function recordLiftSetAndAdapt(session, athlete, { actualReps }, unit = '
   let coachBanner = '';
 
   const remainingWork = step.sets.slice(info.arrayIndex + 1).filter((x) => x.kind === 'work' && !x.done);
-  const stepInc = machine.stepKg || 2.5;
+  const stepLbl = getStepLabel(machine, unit);
   const repMin = s.repMin || Math.max(1, s.targetReps - 1);
   const repMax = s.repMax || s.targetReps + 1;
 
@@ -554,23 +707,38 @@ export function recordLiftSetAndAdapt(session, athlete, { actualReps }, unit = '
     coachBanner = nextLoad ? `Warm-up done · Set pin/plates to ${nextLoad}` : 'Warm-up done';
     restSec = s.restSec || 50;
   } else if (machine.loadType !== 'bodyweight') {
-    if (repsDone > repMax && remainingWork.length > 0) {
+    if (repsDone <= repMin - 2) {
+      s.hitFailureEarly = true;
+    }
+
+    if (session.isDeload) {
+      if (repsDone < repMin && remainingWork.length > 0) {
+        for (const rem of remainingWork) {
+          rem.weightKg = nudgeWeightKg(machine, rem.weightKg, -1, unit);
+        }
+        const nextStr = formatLoad(machine, remainingWork[0].weightKg, unit).primary;
+        coachBanner = `Deload set · Lowered to ${nextStr} to stay light`;
+        step.liveNote = coachBanner;
+      } else {
+        coachBanner = `Deload set ${info.workNumber}/${info.totalWorkSets} done · Keep smooth speed`;
+      }
+    } else if (repsDone > repMax && remainingWork.length > 0) {
       for (const rem of remainingWork) {
-        rem.weightKg = Math.round((rem.weightKg + stepInc) * 10) / 10;
+        rem.weightKg = nudgeWeightKg(machine, rem.weightKg, +1, unit);
       }
       const nextStr = formatLoad(machine, remainingWork[0].weightKg, unit).primary;
       coachBanner = `${repsDone} reps → Bumped to ${nextStr} for next set`;
       step.liveNote = coachBanner;
-      session.adaptations.push(`${machine.shortName}: +${stepInc} kg (${repsDone} reps)`);
+      session.adaptations.push(`${machine.shortName}: +${stepLbl} (${repsDone} reps)`);
     } else if (repsDone <= repMin - 2 && remainingWork.length > 0) {
       for (const rem of remainingWork) {
-        rem.weightKg = Math.max(stepInc, Math.round((rem.weightKg - stepInc) * 10) / 10);
+        rem.weightKg = nudgeWeightKg(machine, rem.weightKg, -1, unit);
       }
       restSec = Math.min(240, restSec + 20);
       const nextStr = formatLoad(machine, remainingWork[0].weightKg, unit).primary;
       coachBanner = `${repsDone} reps → Eased to ${nextStr} to stay in ${repMin}–${repMax}`;
       step.liveNote = coachBanner;
-      session.adaptations.push(`${machine.shortName}: −${stepInc} kg (${repsDone} reps)`);
+      session.adaptations.push(`${machine.shortName}: −${stepLbl} (${repsDone} reps)`);
     } else if (repsDone < repMin && remainingWork.length > 0) {
       restSec = Math.min(240, restSec + 15);
       coachBanner = `${repsDone} reps · Added +15s rest for next set`;
@@ -579,7 +747,7 @@ export function recordLiftSetAndAdapt(session, athlete, { actualReps }, unit = '
       coachBanner = `Set ${info.workNumber} of ${info.totalWorkSets} done · Weight is spot on`;
     }
   } else {
-    if (repsDone > repMax && remainingWork.length > 0) {
+    if (!session.isDeload && repsDone > repMax && remainingWork.length > 0) {
       for (const rem of remainingWork) {
         rem.repMin += 2;
         rem.repMax += 2;
@@ -594,7 +762,7 @@ export function recordLiftSetAndAdapt(session, athlete, { actualReps }, unit = '
 
   if (info.isLastSetOfStep) {
     step.done = true;
-    updateAthleteLiftFromStep(athlete, step);
+    updateAthleteLiftFromStep(athlete, step, session);
     const nextIdx = session.steps.findIndex((st, i) => i > session.currentStepIndex && !st.done);
     if (nextIdx !== -1) {
       session.currentStepIndex = nextIdx;
@@ -611,45 +779,90 @@ export function recordLiftSetAndAdapt(session, athlete, { actualReps }, unit = '
   return { finishedSession: false, restSec, coachBanner };
 }
 
-function updateAthleteLiftFromStep(athlete, step) {
+/**
+ * Update athlete lift record using total mechanical load, step-aware double-progression state,
+ * and chronic e1RM protection on fatigued/discounted/deload sessions.
+ */
+function updateAthleteLiftFromStep(athlete, step, session = null) {
   const machine = getMachineById(step.stationId);
   if (!machine || machine.loadType === 'cardio' || machine.loadType === 'bodyweight') return;
   const workDone = step.sets.filter((s) => s.kind === 'work' && s.done);
   if (!workDone.length) return;
 
+  if (!athlete.lifts) athlete.lifts = {};
+  const prev = athlete.lifts[machine.id] || { e1rm: 0, history: [] };
+  const prevE1rm = resolveMachineE1rm(machine, prev);
+
   let bestE1rm = 0;
   for (const s of workDone) {
-    const reps = s.actualReps || s.targetReps;
-    const est = estimate1RM(s.weightKg, reps, s.rir || 1.5);
+    const reps = s.actualReps || s.targetReps || 8;
+    const repMin = s.repMin || Math.max(1, (s.targetReps || 8) - 1);
+    const estRir =
+      s.hitFailureEarly || reps <= repMin - 2
+        ? 0
+        : reps < repMin
+        ? 1
+        : Number.isFinite(Number(s.rir))
+        ? s.rir
+        : 2;
+    const totalKg = totalMechanicalKg(machine, s.weightKg);
+    const est = estimate1RM(totalKg, reps, estRir);
     if (est > bestE1rm) bestE1rm = est;
   }
 
-  // Double Progression: if athlete hit top of rep window on every working set, nudge e1RM so next session progresses cleanly
-  const hitTopOnAll = workDone.every((s) => (s.actualReps || 0) >= (s.repMax || s.targetReps + 1));
-  if (hitTopOnAll) {
-    bestE1rm = Math.round((bestE1rm * 1.035) * 10) / 10;
+  const isDiscounted = Boolean(session?.isDeload || session?.isDiscounted || step.isDiscounted);
+  const lastSet = workDone[workDone.length - 1];
+  const topWorkKg = Math.max(...workDone.map((s) => Number(s.weightKg) || 0));
+  const repMax = lastSet.repMax || lastSet.targetReps || 10;
+  const repMin = lastSet.repMin || Math.max(1, repMax - 2);
+
+  const hitTopOnAll = workDone.every((s) => (s.actualReps || 0) >= (s.repMax || repMax));
+  const hitMinOnAll = workDone.every((s) => (s.actualReps || 0) >= (s.repMin || repMin));
+  const missedAll = workDone.every((s) => (s.actualReps || 0) < (s.repMin || repMin));
+
+  let newE1rm = prevE1rm;
+  let progressionState = prev.progressionState || 'hold';
+  let lastWorkingKg = Number(prev.lastWorkingKg ?? prev.lastWeight) || topWorkKg;
+  let lastRepMax = Number(prev.lastRepMax) || repMax;
+
+  if (isDiscounted) {
+    // Protect chronic strength & progression state on deload / fatigued / light days
+    newE1rm = Math.max(prevE1rm, bestE1rm);
+  } else {
+    if (bestE1rm >= prevE1rm || !(prevE1rm > 0)) {
+      newE1rm = bestE1rm;
+    } else {
+      newE1rm = Math.round((prevE1rm * 0.65 + bestE1rm * 0.35) * 100) / 100;
+    }
+    lastWorkingKg = topWorkKg;
+    lastRepMax = repMax;
+    progressionState = hitTopOnAll
+      ? 'step_up'
+      : hitMinOnAll
+      ? 'hold'
+      : missedAll
+      ? 'step_down'
+      : 'hold';
   }
 
-  const prev = athlete.lifts?.[machine.id] || { e1rm: 0, history: [] };
-  const lastSet = workDone[workDone.length - 1];
-  const blendedE1rm =
-    bestE1rm > 0
-      ? prev.e1rm > 0
-        ? Math.round((prev.e1rm * 0.35 + bestE1rm * 0.65) * 10) / 10
-        : bestE1rm
-      : prev.e1rm;
-
-  if (!athlete.lifts) athlete.lifts = {};
   athlete.lifts[machine.id] = {
-    e1rm: blendedE1rm,
+    e1rm: newE1rm,
     lastWeight: lastSet.weightKg,
+    lastWorkingKg,
+    lastRepMax,
+    progressionState,
     lastReps: workDone.map((x) => x.actualReps || x.targetReps),
     lastAt: Date.now(),
-    history: [...(prev.history || []).slice(-11), { date: Date.now(), e1rm: blendedE1rm, weightKg: lastSet.weightKg }],
+    history: [
+      ...(prev.history || []).slice(-11),
+      { date: Date.now(), e1rm: newE1rm, weightKg: lastSet.weightKg, discounted: isDiscounted },
+    ],
   };
 
-  if (prev.e1rm > 0 && blendedE1rm > prev.e1rm + 0.4) {
-    step.e1rmGain = Math.round((blendedE1rm - prev.e1rm) * 10) / 10;
+  if (prevE1rm > 0 && newE1rm > prevE1rm + 0.4) {
+    step.e1rmGain = Math.round((newE1rm - prevE1rm) * 10) / 10;
+  } else if (!isDiscounted && hitTopOnAll) {
+    step.e1rmGain = 0.5;
   }
 }
 
@@ -700,6 +913,7 @@ export function rerouteBusyStation(session, athlete, floorOverrides = {}) {
     curStep.zoneCode = getZoneInfo(sub.zone).code;
     curStep.setup = sub.setup;
     curStep.cue = sub.cue;
+    curStep.isDiscounted = Boolean(rx.isDiscounted);
     curStep.sets = buildLiftSets(sub, rx);
     recomputeWalkDistances(session, floorOverrides);
     session.phase = 'active';
@@ -739,6 +953,7 @@ export function applyPainProtection(session, athlete, jointId, floorOverrides = 
       st.cue = sub.cue;
       if (st.type === 'lift') {
         const rx = prescribeStation(sub, athlete, session.readiness);
+        st.isDiscounted = Boolean(rx.isDiscounted);
         st.sets = buildLiftSets(sub, rx);
       }
       swappedCount += 1;
@@ -791,7 +1006,8 @@ export function applyFormAdjustment(
   session,
   athlete,
   { pinCue = '', dropLoad = false, swapToId = null, rememberSwap = false },
-  floorOverrides = {}
+  floorOverrides = {},
+  unit = 'kg'
 ) {
   const step = getActiveStep(session);
   if (!step) return null;
@@ -816,6 +1032,7 @@ export function applyFormAdjustment(
       step.liveNote = '';
       if (step.type === 'lift') {
         const rx = prescribeStation(sub, athlete, session.readiness);
+        step.isDiscounted = Boolean(rx.isDiscounted);
         step.sets = buildLiftSets(sub, rx);
       }
       recomputeWalkDistances(session, floorOverrides);
@@ -837,14 +1054,15 @@ export function applyFormAdjustment(
   }
 
   if (dropLoad && step.type === 'lift' && origMachine && origMachine.loadType !== 'bodyweight') {
-    const inc = origMachine.stepKg || 2.5;
+    const stepLbl = getStepLabel(origMachine, unit);
+    step.isDiscounted = true;
     for (const s of step.sets) {
       if (!s.done) {
-        s.weightKg = Math.max(inc, Math.round((s.weightKg - inc) * 10) / 10);
+        s.weightKg = nudgeWeightKg(origMachine, s.weightKg, -1, unit);
       }
     }
-    session.adaptations.push(`${origMachine.shortName}: −${inc} kg for cleaner form`);
-    return `Saved form tip & lowered −${inc} kg`;
+    session.adaptations.push(`${origMachine.shortName}: −${stepLbl} for cleaner form`);
+    return `Saved form tip & lowered −${stepLbl}`;
   }
 
   return 'Form reminder saved';
@@ -855,7 +1073,7 @@ export function completeCurrentStep(session, athlete) {
   if (!step) return;
   step.done = true;
   if (step.type === 'lift') {
-    updateAthleteLiftFromStep(athlete, step);
+    updateAthleteLiftFromStep(athlete, step, session);
   }
   const nextIdx = session.steps.findIndex((st, i) => i > session.currentStepIndex && !st.done);
   if (nextIdx !== -1) {
@@ -864,6 +1082,24 @@ export function completeCurrentStep(session, athlete) {
   } else {
     session.phase = 'summary';
   }
+}
+
+function advanceEntityMesocycle(entity, targetDays) {
+  const meso = entity.mesocycle || { week: 1, sessionInWeek: 1, totalCompleted: 0 };
+  meso.totalCompleted = (meso.totalCompleted || 0) + 1;
+  const cycleLen = entity.goal === 'max_strength' ? 8 : 4;
+
+  if (meso.sessionInWeek >= targetDays) {
+    meso.sessionInWeek = 1;
+    if (entity.goal === 'max_strength' && entity.inSeasonNeuralOnly) {
+      meso.week = meso.week < 5 || meso.week >= 8 ? 5 : meso.week + 1;
+    } else {
+      meso.week = (meso.week % cycleLen) + 1;
+    }
+  } else {
+    meso.sessionInWeek += 1;
+  }
+  entity.mesocycle = meso;
 }
 
 export function finalizeSessionToPlan(state, session, wearableSnap = null) {
@@ -878,23 +1114,20 @@ export function finalizeSessionToPlan(state, session, wearableSnap = null) {
     0
   );
 
-  // Advance persistent 8-week 2-block cycle (W1–W4 Base -> W5–W8 Max Neural)
+  const isRecoverySplit = session.splitId === 'cardio_core';
   const targetDays = Math.max(2, Number(athlete.daysPerWeek) || 3);
-  const meso = athlete.mesocycle || { week: 1, sessionInWeek: 1, totalCompleted: 0 };
-  meso.totalCompleted = (meso.totalCompleted || 0) + 1;
-  if (meso.sessionInWeek >= targetDays) {
-    meso.sessionInWeek = 1;
-    if (athlete.inSeasonNeuralOnly && meso.week >= 8) {
-      meso.week = 5;
-    } else {
-      meso.week = (meso.week % 8) + 1;
+
+  // Active Recovery (`cardio_core`) NEVER overwrites `lastSplitId` or consumes a weekly strength slot!
+  if (!isRecoverySplit) {
+    advanceEntityMesocycle(athlete, targetDays);
+    athlete.lastWorkoutAt = now;
+    athlete.lastSplitId = session.splitId;
+    if (state.partner?.enabled) {
+      advanceEntityMesocycle(state.partner, targetDays);
     }
   } else {
-    meso.sessionInWeek += 1;
+    athlete.lastRecoveryAt = now;
   }
-  athlete.mesocycle = meso;
-  athlete.lastWorkoutAt = now;
-  athlete.lastSplitId = session.splitId;
 
   const durationSec = session.startedAt
     ? Math.max(300, Math.round((now - session.startedAt) / 1000))
@@ -929,7 +1162,13 @@ export function finalizeSessionToPlan(state, session, wearableSnap = null) {
 function recomputeSessionMeta(state, session) {
   recomputeWalkDistances(session, state.floorOverrides || {});
   if (state.partner?.enabled) {
-    attachPartnerAssignments(session.steps, state.athlete, state.partner, state.floorOverrides || {});
+    attachPartnerAssignments(
+      session.steps,
+      state.athlete,
+      state.partner,
+      state.floorOverrides || {},
+      state.settings?.unit || 'kg'
+    );
   }
   const estSec = session.steps.reduce((sum, st) => {
     if (st.type === 'warmup' || st.type === 'cardio') return sum + st.durationSec;
@@ -957,6 +1196,7 @@ export function swapBriefingStep(state, session, stepIndex) {
   if (step.type === 'lift') {
     const rx = prescribeStation(sub, state.athlete, session.readiness);
     step.pct1RM = rx.pct1RM;
+    step.isDiscounted = Boolean(rx.isDiscounted);
     step.sets = buildLiftSets(sub, rx);
   }
   recomputeSessionMeta(state, session);
@@ -1022,6 +1262,7 @@ export function applyPreWorkoutFeedback(state, session, rawInput, liveWearable =
             if (st.type === 'lift') {
               const rx = prescribeStation(sub, athlete, session.readiness);
               st.pct1RM = rx.pct1RM;
+              st.isDiscounted = Boolean(rx.isDiscounted);
               st.sets = buildLiftSets(sub, rx);
             }
           }
@@ -1070,6 +1311,7 @@ export function applyPreWorkoutFeedback(state, session, rawInput, liveWearable =
         setup: coreM.setup,
         cue: coreM.cue,
         pct1RM: rx.pct1RM,
+        isDiscounted: Boolean(rx.isDiscounted),
         sets: buildLiftSets(coreM, rx),
         liveNote: '',
         done: false,
@@ -1099,6 +1341,7 @@ export function applyPreWorkoutFeedback(state, session, rawInput, liveWearable =
         setup: gm.setup,
         cue: gm.cue,
         pct1RM: rx.pct1RM,
+        isDiscounted: Boolean(rx.isDiscounted),
         sets: buildLiftSets(gm, rx),
         liveNote: '',
         done: false,
@@ -1108,8 +1351,10 @@ export function applyPreWorkoutFeedback(state, session, rawInput, liveWearable =
   }
 
   if (q.includes('higher rep') || q.includes('more rep')) {
+    session.isDiscounted = true;
     for (const st of session.steps) {
       if (st.type !== 'lift') continue;
+      st.isDiscounted = true;
       const m = getMachineById(st.stationId);
       for (const s of st.sets) {
         if (s.kind === 'work') {
@@ -1122,8 +1367,10 @@ export function applyPreWorkoutFeedback(state, session, rawInput, liveWearable =
     }
     notes.push('Higher reps (10–12+) & lighter load');
   } else if (q.includes('tired') || q.includes('sleep') || q.includes('slept') || q.includes('low energy') || q.includes('easy') || q.includes('light') || q.includes('exhaust')) {
+    session.isDiscounted = true;
     for (const st of session.steps) {
       if (st.type !== 'lift') continue;
+      st.isDiscounted = true;
       const m = getMachineById(st.stationId);
       const workSets = st.sets.filter((s) => s.kind === 'work');
       if (workSets.length >= 3) st.sets.pop();
@@ -1131,15 +1378,15 @@ export function applyPreWorkoutFeedback(state, session, rawInput, liveWearable =
         if (s.weightKg > 0) s.weightKg = roundToStep(s.weightKg * 0.92, m?.stepKg || 2.5);
       }
     }
-    notes.push('−8% weight & −1 set per exercise');
+    notes.push('−8% weight & −1 set (chronic 1RM protected)');
   } else if (q.includes('strong') || q.includes('fresh') || q.includes('heavy') || q.includes('push hard') || /\bmax\b/.test(q)) {
+    const unit = state.settings?.unit || 'kg';
     for (const st of session.steps) {
       if (st.type !== 'lift') continue;
       const m = getMachineById(st.stationId);
       if (m?.compound && m.loadType !== 'bodyweight') {
-        const inc = m.stepKg || 2.5;
         for (const s of st.sets) {
-          if (s.kind === 'work') s.weightKg = Math.round((s.weightKg + inc) * 10) / 10;
+          if (s.kind === 'work') s.weightKg = nudgeWeightKg(m, s.weightKg, +1, unit);
         }
       }
     }
@@ -1162,6 +1409,7 @@ export function applyPreWorkoutFeedback(state, session, rawInput, liveWearable =
         id: 'step_cardio_added',
         type: 'cardio',
         protocol: 'zone2',
+        heroLabel: `Steady Zone 2 · ${hb.min}–${hb.max} bpm`,
         stationId: 'c_climbmill',
         zoneCode: 'A',
         walkMeters: 0,
@@ -1184,11 +1432,12 @@ export function applyPreWorkoutFeedback(state, session, rawInput, liveWearable =
     }
     if (q.includes('vo2') || q.includes('interval')) {
       const hb = getHrBand(athlete, 0.82, 0.92);
-      card.protocol = 'vo2_4x3';
-      card.durationSec = 960;
+      card.protocol = 'vo2_3x3';
+      card.heroLabel = `3 × 3 min VO₂ · ${hb.min}–${hb.max} bpm`;
+      card.durationSec = 840;
       card.hrBand = hb;
-      card.cue = `4 rounds: 3 min hard (${hb.min}–${hb.max} bpm) + 2 min easy`;
-      notes.push('VO₂max 4×3m');
+      card.cue = `3 rounds: 3 min hard (${hb.min}–${hb.max} bpm) + 1.5 min easy`;
+      notes.push('VO₂max 3×3m');
     } else if (q.includes('more cardio')) {
       card.durationSec = Math.min(2100, card.durationSec + 360);
       notes.push('+6m cardio');

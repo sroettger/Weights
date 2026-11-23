@@ -114,6 +114,7 @@ export const GYM_MACHINES = [
     zone: 'lower',
     pos: { x: 3.6, y: 7.4 },
     loadType: 'plate_per_side',
+    tareKg: 35,
     movement: 'squat',
     compound: true,
     stepKg: 2.5,
@@ -174,6 +175,7 @@ export const GYM_MACHINES = [
     zone: 'lower',
     pos: { x: 3.6, y: 9.9 },
     loadType: 'plate_per_side',
+    tareKg: 10,
     movement: 'calf',
     compound: false,
     stepKg: 2.5,
@@ -194,9 +196,10 @@ export const GYM_MACHINES = [
     zone: 'lower',
     pos: { x: 11.6, y: 8.6 },
     loadType: 'plate_per_side',
+    tareKg: 15,
     movement: 'hinge',
     compound: true,
-    stepKg: 5,
+    stepKg: 2.5,
     baselineWorkKg: 15,
     baselineReps: 8,
     setup: 'Upper back on pad · Buckle belt across hips · Feet flat',
@@ -270,8 +273,8 @@ export const GYM_MACHINES = [
   // Zone D — Back & Cable Area
   {
     id: 'm_lat_pull',
-    name: 'Lat Pulldown',
-    gymLabel: 'Latzug · Overhead Bar',
+    name: 'Lat Pulldown · Wide Bar',
+    gymLabel: 'Latzug · Wide Overhead Bar',
     shortName: 'Lat Pull',
     muscleTag: 'Upper Back & Lats',
     tier: 't1_upper',
@@ -290,10 +293,10 @@ export const GYM_MACHINES = [
   },
   {
     id: 'm_pullup',
-    name: 'Assisted / Weighted Pull-Up',
-    gymLabel: 'Klimmzugstation · Pull-Up Tower',
-    shortName: 'Pull-Up',
-    muscleTag: 'Lats, Lock-Off & Core',
+    name: 'Lat Pulldown · Close Neutral Grip',
+    gymLabel: 'Latzug · Narrow Parallel Handle',
+    shortName: 'Close Pulldown',
+    muscleTag: 'Lats, Lock-Off & Arms',
     tier: 't1_upper',
     zone: 'pull',
     pos: { x: 7.8, y: 13.8 },
@@ -301,12 +304,12 @@ export const GYM_MACHINES = [
     movement: 'vert_pull',
     compound: true,
     stepKg: 2.5,
-    baselineWorkKg: 15,
+    baselineWorkKg: 40,
     baselineReps: 8,
-    setup: 'Parallel neutral handles · Counterweight knee pad (or belt)',
-    cue: 'Start from active hang · Pull chest to bar with zero swinging',
-    muscles: { lats: 1.0, biceps: 0.65, core: 0.4, forearms: 0.55 },
-    jointStress: { fingers: 0.65, shoulder: 0.45, lower_back: 0, knee: 0 },
+    setup: 'Lock thighs snug under pad · Palms facing each other on narrow handle',
+    cue: 'Lean back 10° · Drive elbows tight past ribs to lower chest (lock-off power)',
+    muscles: { lats: 1.0, biceps: 0.7, upper_back: 0.55, forearms: 0.45 },
+    jointStress: { fingers: 0.5, shoulder: 0.25, lower_back: 0.05, knee: 0 },
   },
   {
     id: 'm_low_row',
@@ -360,6 +363,7 @@ export const GYM_MACHINES = [
     zone: 'push',
     pos: { x: 16.8, y: 14.0 },
     loadType: 'plate_per_side',
+    tareKg: 20,
     movement: 'horiz_push',
     compound: true,
     stepKg: 2.5,
@@ -437,8 +441,8 @@ export function getZoneInfo(zoneId) {
 }
 
 /**
- * Find best substitute station on the floor considering movement pattern,
- * muscle overlap, joint pain exclusions, busy stations, and walking distance.
+ * Find best substitute station on the floor requiring true biomechanical / muscle overlap
+ * (unless target is cardio, where any cardio machine is valid).
  */
 export function findBestSubstitute(targetMachine, opts = {}) {
   const {
@@ -463,19 +467,21 @@ export function findBestSubstitute(targetMachine, opts = {}) {
   let bestScore = -Infinity;
 
   for (const c of candidates) {
-    let score = 0;
-    if (c.movement === targetMachine.movement) score += 50;
-    if (c.zone === targetMachine.zone) score += 12;
+    let bioScore = 0;
+    if (c.movement === targetMachine.movement) bioScore += 50;
     for (const mus of targetMuscles) {
       if (c.muscles?.[mus]) {
-        score += 30 * Math.min(targetMachine.muscles[mus], c.muscles[mus]);
+        bioScore += 30 * Math.min(targetMachine.muscles[mus], c.muscles[mus]);
       }
     }
+    // Require meaningful muscle or movement overlap on strength lifts (never swap a row to calf raises!)
+    if (targetMachine.loadType !== 'cardio' && bioScore < 15) continue;
+
+    let score = bioScore + (c.zone === targetMachine.zone ? 8 : 0);
     if (painJoint) {
       score -= (c.jointStress?.[painJoint] || 0) * 60;
     }
-    const dist = distanceMeters(fromMachine, c, floorOverrides);
-    score -= dist * 0.8;
+    score -= distanceMeters(fromMachine, c, floorOverrides) * 0.8;
 
     if (score > bestScore) {
       bestScore = score;

@@ -141,25 +141,38 @@ export const MACHINE_GUIDES = {
   },
 
   m_pullup: {
-    pivot: 'Active hang (ears clear of shoulders before pulling)',
+    pivot: 'Thighs locked snug under pad · Narrow parallel (neutral) handle',
     steps: [
-      'Set knee/foot pad counterweight (or dip belt) cleanly',
-      'Neutral handles reduce elbow/shoulder strain for climbers',
-      'Pull chest to bar; 2s controlled descent to full hang',
+      'Pin weight stack (higher number = heavier pull); lock thighs tightly under pad',
+      'Grip narrow parallel handle with palms facing each other; lean torso back ~10–15°',
+      'Pull shoulder blades down first, then drive elbows tight past ribs to lower sternum',
     ],
-    feel: 'Lats, upper back & core tension',
-    avoid: 'Medial elbow ache or half-reps at bottom',
+    feel: 'Lower/mid lats, lock-off muscles & brachialis',
+    avoid: 'Rocking torso 45° backward or curling wrists inward',
     issues: [
       {
         id: 'elbow_golfer',
         chip: 'Inner elbow / forearm ache',
-        keywords: ['elbow', 'forearm', 'tendon', 'golfer', 'finger'],
-        cause: 'Supinated/pronated bar torque overloading flexor-pronator origin.',
+        keywords: ['elbow', 'forearm', 'tendon', 'golfer', 'finger', 'grip'],
+        cause: 'Death-gripping the handle and flexing wrists under load overloads the medial epicondyle.',
         fixes: [
-          'Switch immediately to neutral (parallel) grip handles',
-          'Stop 1–2 cm shy of violent dead-hang bounce at bottom',
+          'Hook fingers loosely with straight neutral wrists (no wrist curl)',
+          'Stop 2 cm shy of yanking into a violent dead-hang bounce at the top',
         ],
-        pinCue: 'Neutral parallel grip · Smooth bottom transition',
+        pinCue: 'Loose hook grip · Straight wrists · Smooth top stretch',
+        suggestDropLoad: true,
+        swapId: 'm_low_row',
+      },
+      {
+        id: 'leaning_row_pull',
+        chip: 'Swinging back / turning into a row',
+        keywords: ['swing', 'lean', 'back', 'heavy', 'momentum'],
+        cause: 'Using hip momentum when the pin is 1–2 steps above strict lock-off strength.',
+        fixes: [
+          'Keep thighs wedged firmly under pad and cap torso lean at ~15°',
+          'Pause 0.5s with handle at lower chest — drop 1 pin if it won’t touch chest cleanly',
+        ],
+        pinCue: '15° max lean · Touch lower sternum cleanly',
         suggestDropLoad: true,
         swapId: 'm_lat_pull',
       },
@@ -835,10 +848,15 @@ export function renderFormDiagramSvg(machine) {
 
     case 'm_pullup':
       art = `
-        <path d="M48 16 L128 16 M56 16 L56 92 M120 16 L120 92" fill="none" stroke="var(--border-strong)" stroke-width="4" stroke-linecap="round"/>
-        <path d="M72 16 L78 38 L88 68 L88 88 M104 16 L98 38 L88 68" fill="none" stroke="var(--text)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
-        <circle cx="88" cy="30" r="7.5" fill="var(--text)"/>
-        <path d="M138 64 L138 34 M133 40 L138 33 L143 40" fill="none" stroke="var(--success)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="28" y="18" width="16" height="72" rx="3" fill="none" stroke="var(--border-strong)" stroke-width="3.5"/>
+        <path d="M36 18 L84 12 L84 30" fill="none" stroke="var(--text-muted)" stroke-width="2.5" stroke-dasharray="4 3"/>
+        <path d="M78 28 L84 34 L90 28" fill="none" stroke="var(--warning)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="80" cy="64" r="5" fill="var(--warning)"/>
+        <path d="M72 72 L104 72 L104 92" fill="none" stroke="var(--border-strong)" stroke-width="4.5" stroke-linecap="round"/>
+        <path d="M84 34 L94 48 L96 70 L72 70 L68 90" fill="none" stroke="var(--text)" stroke-width="5.2" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="102" cy="36" r="7.5" fill="var(--text)"/>
+        <circle cx="94" cy="48" r="4.5" fill="var(--accent)"/>
+        <path d="M132 28 L132 58 M127 52 L132 59 L137 52" fill="none" stroke="var(--success)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
       `;
       break;
 

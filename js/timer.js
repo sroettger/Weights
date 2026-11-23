@@ -22,8 +22,15 @@ export class RestTimer {
     this.onChange(this.getSnapshot(), false);
   }
 
-  start(seconds, label = 'Rest', mode = 'rest') {
+  /**
+   * Supports both `start(sec, { mode, label })` and `start(sec, label, mode)`.
+   */
+  start(seconds, labelOrOpts = 'Rest', modeArg = 'rest') {
     const dur = Math.max(5, Math.round(Number(seconds) || 60));
+    const isObj = labelOrOpts && typeof labelOrOpts === 'object';
+    const label = isObj ? String(labelOrOpts.label || 'Rest') : String(labelOrOpts || 'Rest');
+    const mode = isObj ? String(labelOrOpts.mode || 'rest') : String(modeArg || 'rest');
+
     const now = Date.now();
     const t = this.getTimerState();
     t.running = true;
@@ -104,7 +111,7 @@ export class RestTimer {
         elapsedSec: 0,
         durationSec: t.durationSec || 90,
         progress: 0,
-        label: t.label || '',
+        label: typeof t.label === 'string' ? t.label : 'Rest',
         hrExtensions: 0,
         hrReason: '',
       };
@@ -129,7 +136,7 @@ export class RestTimer {
       elapsedSec,
       durationSec: t.durationSec || 60,
       progress,
-      label: t.label || 'Rest',
+      label: typeof t.label === 'string' ? t.label : 'Rest',
       hrExtensions: t.hrExtensions || 0,
       hrReason: t.hrReason || '',
     };
@@ -137,12 +144,12 @@ export class RestTimer {
 
   ensureLoop() {
     if (this.intervalId) return;
-    this.intervalId = window.setInterval(() => this.tick(), 250);
+    this.intervalId = setInterval(() => this.tick(), 250);
   }
 
   stopLoop() {
     if (this.intervalId) {
-      window.clearInterval(this.intervalId);
+      clearInterval(this.intervalId);
       this.intervalId = null;
     }
   }
@@ -156,7 +163,7 @@ export class RestTimer {
 
     const snap = this.getSnapshot();
 
-    // Asymmetric HR recovery brake when rest timer hits 0
+    // Asymmetric HR recovery brake ONLY when mode === 'rest'
     if (
       t.mode === 'rest' &&
       snap.remainingSec <= 1 &&

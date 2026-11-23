@@ -1,17 +1,17 @@
 /**
- * Weights — Persistent AI Coach State (v6: 8-Week Block Periodization + Clean Rep Windows)
+ * Weights — Persistent AI Coach State (v7: Tare-Aware Mechanical 1RM + Step-Aware Progression)
  */
 
-import { GYM_MACHINES } from './floor.js';
-import { estimate1RM } from './science.js';
+import { GYM_MACHINES, getMachineById } from './floor.js';
+import { totalMechanicalKg, estimate1RM, resolveMachineE1rm } from './science.js';
 
-export const STORAGE_KEY = 'weights_ai_coach_v6';
-const LEGACY_KEYS = ['weights_ai_coach_v5'];
+export const STORAGE_KEY = 'weights_ai_coach_v7';
+const LEGACY_KEYS = ['weights_ai_coach_v6', 'weights_ai_coach_v5'];
 
 function buildSeedLifts(now) {
   const day = 86400000;
   const seed = {
-    m_calf: { weight: 5, reps: 15, daysAgo: 3 },
+    m_calf: { weight: 7.5, reps: 12, daysAgo: 3 },
     m_leg_ext: { weight: 35, reps: 12, daysAgo: 3 },
     m_leg_press: { weight: 12.5, reps: 8, daysAgo: 3 },
     m_leg_curl: { weight: 35, reps: 10, daysAgo: 3 },
@@ -28,11 +28,15 @@ function buildSeedLifts(now) {
     if (m.loadType === 'cardio' || m.loadType === 'bodyweight') continue;
     const s = seed[m.id];
     if (s) {
-      const e1rm = estimate1RM(s.weight, s.reps, 2);
+      const totalKg = totalMechanicalKg(m, s.weight);
+      const e1rm = estimate1RM(totalKg, s.reps, 2);
       const ts = now - s.daysAgo * day;
       lifts[m.id] = {
         e1rm,
         lastWeight: s.weight,
+        lastWorkingKg: s.weight,
+        lastRepMax: s.reps,
+        progressionState: 'hold',
         lastReps: [s.reps, s.reps, s.reps],
         lastAt: ts,
         history: [{ date: ts, e1rm, weightKg: s.weight }],
@@ -42,10 +46,28 @@ function buildSeedLifts(now) {
   return lifts;
 }
 
+function upgradeLiftsMap(rawLifts = {}, fallbackLifts = {}) {
+  const merged = { ...fallbackLifts, ...(rawLifts || {}) };
+  const out = {};
+  for (const [id, rec] of Object.entries(merged)) {
+    const m = getMachineById(id);
+    if (!m || !rec) continue;
+    const upgradedE1rm = resolveMachineE1rm(m, rec);
+    out[id] = {
+      ...rec,
+      e1rm: upgradedE1rm,
+      lastWorkingKg: Number(rec.lastWorkingKg ?? rec.lastWeight ?? m.baselineWorkKg) || m.baselineWorkKg,
+      lastRepMax: Number(rec.lastRepMax ?? rec.lastReps?.[0] ?? m.baselineReps) || m.baselineReps,
+      progressionState: rec.progressionState || 'hold',
+    };
+  }
+  return out;
+}
+
 export function createDefaultState(now = Date.now()) {
   const day = 86400000;
   return {
-    version: 6,
+    version: 7,
     gymName: 'Manegg Motion',
     settings: {
       unit: 'kg',
@@ -72,7 +94,7 @@ export function createDefaultState(now = Date.now()) {
       jointFlags: {},
       formNotes: {},
       mesocycle: {
-        week: 1, // Starts in Block 1 · Week 1 (8–10 rep Structural Base)
+        week: 1,
         sessionInWeek: 1,
         totalCompleted: 1,
       },
@@ -126,7 +148,7 @@ export function createDefaultState(now = Date.now()) {
       durationSec: 120,
       endTime: null,
       pausedRemainingMs: null,
-      label: '',
+      label: 'Rest',
       hrExtensions: 0,
       hrReason: '',
       notifiedComplete: false,
@@ -137,9 +159,8 @@ export function createDefaultState(now = Date.now()) {
 export function loadState() {
   try {
     const defaults = createDefaultState();
-    let raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(STORAGE_KEY);
 
-    // Migrate lift history, floor calibration, and wearable settings from v5 while resetting stale 4-rep activeSession
     if (!raw) {
       for (const oldKey of LEGACY_KEYS) {
         const legacyRaw = localStorage.getItem(oldKey);
@@ -151,16 +172,23 @@ export function loadState() {
             athlete: {
               ...defaults.athlete,
               ...(legacy.athlete || {}),
-              mesocycle: { week: 1, sessionInWeek: 1, totalCompleted: legacy.athlete?.mesocycle?.totalCompleted || 1 },
-              lifts: { ...defaults.athlete.lifts, ...(legacy.athlete?.lifts || {}) },
+              mesocycle: {
+                ...defaults.athlete.mesocycle,
+                ...(legacy.athlete?.mesocycle || {}),
+              },
+              lifts: upgradeLiftsMap(legacy.athlete?.lifts, defaults.athlete.lifts),
               jointFlags: { ...(legacy.athlete?.jointFlags || {}) },
               formNotes: { ...(legacy.athlete?.formNotes || {}) },
             },
-            partner: { ...defaults.partner, ...(legacy.partner || {}) },
+            partner: {
+              ...defaults.partner,
+              ...(legacy.partner || {}),
+              lifts: upgradeLiftsMap(legacy.partner?.lifts, {}),
+            },
             wearable: { ...defaults.wearable, ...(legacy.wearable || {}) },
             floorOverrides: { ...(legacy.floorOverrides || {}) },
             history: Array.isArray(legacy.history) ? legacy.history : defaults.history,
-            activeSession: null, // Force fresh 8–10 rep Block 1 session generation
+            activeSession: null,
           };
         }
       }
@@ -176,11 +204,15 @@ export function loadState() {
         ...defaults.athlete,
         ...(parsed.athlete || {}),
         mesocycle: { ...defaults.athlete.mesocycle, ...(parsed.athlete?.mesocycle || {}) },
-        lifts: { ...defaults.athlete.lifts, ...(parsed.athlete?.lifts || {}) },
+        lifts: upgradeLiftsMap(parsed.athlete?.lifts, defaults.athlete.lifts),
         jointFlags: { ...(parsed.athlete?.jointFlags || {}) },
         formNotes: { ...(parsed.athlete?.formNotes || {}) },
       },
-      partner: { ...defaults.partner, ...(parsed.partner || {}) },
+      partner: {
+        ...defaults.partner,
+        ...(parsed.partner || {}),
+        lifts: upgradeLiftsMap(parsed.partner?.lifts, {}),
+      },
       wearable: { ...defaults.wearable, ...(parsed.wearable || {}) },
       floorOverrides: { ...(parsed.floorOverrides || {}) },
       timer: { ...defaults.timer, ...(parsed.timer || {}) },
