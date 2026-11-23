@@ -839,7 +839,7 @@ export function renderFloorModalBody(state, session, editPins = false) {
     <div class="sheet-section">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
         <span class="spec-tile-sub">${
-          editPins ? 'Drag any pin to match the exact gym layout.' : 'Manegg Motion · Highlighted workout route'
+          editPins ? 'Drag any pin to fine-tune its spot.' : 'Section 1 mapped from photos · Sec 2 awaiting photos'
         }</span>
         <div style="display:flex;gap:6px;">
           <button type="button" class="btn btn-secondary btn-sm" data-action="toggle-floor-edit">
@@ -869,6 +869,7 @@ export function renderFloorModalBody(state, session, editPins = false) {
         <span class="chip">🟠 Current</span>
         ${state.partner?.enabled ? `<span class="chip">🔵 Partner</span>` : ''}
         <span class="chip">🟢 Done</span>
+        <span class="chip">🩵 Windows / Mirror</span>
       </div>
     </div>
   `;

@@ -180,48 +180,48 @@ export const MACHINE_GUIDES = {
   },
 
   m_low_row: {
-    pivot: 'Chest pad set so fingers just reach handles with protracted blades',
+    pivot: 'Feet braced on angled Matrix diamond footplate · Knees bent ~20° · Tall braced spine',
     steps: [
-      'Seat height: chest pad supports mid-sternum (not throat or belly)',
-      'Let shoulder blades stretch forward slightly, then retract & row',
-      'Drive elbows past torso; hold 1s without leaning backward',
+      'Sit on the long bench, plant heels/mid-foot on the angled black footplate, and push back until knees keep a soft bend',
+      'Brace abs to lock your torso vertical (no chest pad on this station — your core is the stabilizer)',
+      'Let shoulder blades glide forward cleanly, then retract blades & drive dual handles to lower ribs for a 1s squeeze',
     ],
     feel: 'Mid-back (rhomboids, mid-traps) & lats',
-    avoid: 'Shrugging upper traps or rocking chest off pad',
+    avoid: 'Swinging torso backward >15° or shrugging shoulders toward ears',
     issues: [
       {
         id: 'upper_traps',
         chip: 'Neck / upper traps taking over',
         keywords: ['trap', 'traps', 'neck', 'shrug', 'shoulder'],
-        cause: 'Seat is too low, forcing elbows high and shrugging toward ears.',
+        cause: 'Pulling handles high toward chest with flared elbows instead of low toward navel/ribs.',
         fixes: [
-          'Raise seat 1–2 clicks so handles pull toward lower ribs / navel',
-          'Keep long neck; pull elbows down and back',
+          'Keep shoulders packed down away from ears; aim hands toward your belt/lower ribs',
+          'Keep elbows tucked ~30° close to your sides',
         ],
-        pinCue: 'Raise seat +1 · Pull low toward ribs, not chest',
+        pinCue: 'Shoulders down · Pull low to belt/ribs',
         suggestDropLoad: true,
       },
       {
         id: 'biceps_row',
-        chip: 'Mostly arms / forearms',
-        keywords: ['arm', 'arms', 'bicep', 'forearm', 'grip'],
-        cause: 'Bending wrists and pulling with hands instead of scapular retraction.',
+        chip: 'Mostly arms / forearms or lower back',
+        keywords: ['arm', 'arms', 'bicep', 'forearm', 'grip', 'back', 'lumbar', 'swing'],
+        cause: 'Curling wrists or rocking from the hips instead of scapular retraction.',
         fixes: [
-          'Keep wrists straight; initiate by pinching shoulder blades first',
-          'Pause 1s at peak contraction — if you can’t pause, drop 2.5–5 kg',
+          'Lock torso upright (0° hip swing) and keep wrists straight',
+          'Initiate every rep by pinching shoulder blades together; drop 1 pin if you can’t hold 1s at ribs',
         ],
-        pinCue: 'Straight wrists · Blades first · 1s squeeze',
+        pinCue: 'Zero hip swing · Straight wrists · 1s blade squeeze',
         suggestDropLoad: true,
       },
     ],
   },
 
   m_cable_pull: {
-    pivot: 'Pulley set slightly above eye level · Rope attachment',
+    pivot: 'Set numbered chrome Hi-Lo column to #15–16 (slightly above eye level)',
     steps: [
-      'Hold rope with thumbs pointing backward (hammer grip)',
-      'Step back into split stance for stability',
-      'Pull center of rope to forehead while rotating thumbs behind ears',
+      'Slide pulley carriage to hole #15 or #16 on the numbered upright; clip rope or dual strap handles',
+      'Hold handles with thumbs pointing backward and step back into a staggered stance',
+      'Pull toward forehead while rotating thumbs & wrists behind ears',
     ],
     feel: 'Rear delts & external rotators',
     avoid: 'Leaning way back and turning it into a heavy lat row',
@@ -862,13 +862,14 @@ export function renderFormDiagramSvg(machine) {
 
     case 'm_low_row':
       art = `
-        <rect x="30" y="24" width="16" height="66" rx="3" fill="none" stroke="var(--border-strong)" stroke-width="3.5"/>
-        <line x1="46" y1="50" x2="94" y2="50" stroke="var(--text-muted)" stroke-width="2.5" stroke-dasharray="4 3"/>
-        <line x1="94" y1="42" x2="94" y2="62" stroke="var(--warning)" stroke-width="5" stroke-linecap="round"/>
-        <path d="M106 36 L106 70 L78 88 M94 50 L118 54" fill="none" stroke="var(--text)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
-        <circle cx="106" cy="22" r="7.5" fill="var(--text)"/>
-        <circle cx="116" cy="54" r="4.5" fill="var(--accent)"/>
-        <path d="M122 38 L144 38 M138 33 L145 38 L138 43" fill="none" stroke="var(--success)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="24" y="20" width="16" height="70" rx="3" fill="none" stroke="var(--border-strong)" stroke-width="3.5"/>
+        <line x1="50" y1="64" x2="60" y2="86" stroke="var(--warning)" stroke-width="5" stroke-linecap="round"/>
+        <path d="M40 86 L136 86 M92 78 L134 78 L134 92 M100 78 L100 92" fill="none" stroke="var(--border-strong)" stroke-width="4" stroke-linecap="round"/>
+        <line x1="40" y1="64" x2="108" y2="56" stroke="var(--text-muted)" stroke-width="2.5" stroke-dasharray="4 3"/>
+        <path d="M108 34 L108 74 L82 68 L58 76 M108 46 L120 56" fill="none" stroke="var(--text)" stroke-width="5.2" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="108" cy="21" r="7.5" fill="var(--text)"/>
+        <circle cx="118" cy="56" r="4.5" fill="var(--accent)"/>
+        <path d="M124 40 L146 40 M140 35 L147 40 L140 45" fill="none" stroke="var(--success)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
       `;
       break;
 

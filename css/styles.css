@@ -810,11 +810,87 @@ button {
   width: 100%;
   height: auto;
   display: block;
-  max-height: 205px;
+  max-height: 225px;
+}
+
+#floor-modal-svg-wrap .floor-svg {
+  max-height: 320px;
 }
 
 .floor-svg.is-compact {
-  max-height: 148px;
+  max-height: 152px;
+}
+
+.fp-sec1-bg {
+  fill: var(--surface-2);
+}
+
+.fp-sec2-bg {
+  fill: var(--surface-1);
+  stroke: var(--border-strong);
+  stroke-width: 1.4;
+  stroke-dasharray: 6 4;
+}
+
+.fp-wall {
+  fill: none;
+  stroke: var(--text-secondary);
+  stroke-width: 3.2;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+}
+
+.fp-window {
+  stroke: var(--teal);
+  stroke-width: 3.6;
+  stroke-linecap: butt;
+  opacity: 0.85;
+}
+
+.fp-door {
+  stroke: var(--warning);
+  stroke-width: 3.2;
+  stroke-linecap: round;
+}
+
+.fp-mirror-wall {
+  fill: var(--surface-3);
+  stroke: var(--text-secondary);
+  stroke-width: 1.8;
+}
+
+.fp-mirror-glass {
+  stroke: var(--teal);
+  stroke-width: 1.4;
+  stroke-dasharray: 4 2;
+  opacity: 0.8;
+}
+
+.fp-pillar {
+  fill: var(--text-muted);
+  opacity: 0.55;
+}
+
+.fp-fixture rect,
+.fp-fixture line {
+  fill: var(--surface-1);
+  stroke: var(--border-strong);
+  stroke-width: 1.1;
+}
+
+.fp-fixture-label {
+  fill: var(--text-muted);
+  font-size: 7.4px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.fp-arch-label {
+  fill: var(--text-muted);
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  pointer-events: none;
 }
 
 .fp-zone rect {
@@ -825,8 +901,8 @@ button {
 
 .fp-zone-label {
   fill: var(--text-muted);
-  font-size: 10.5px;
-  font-weight: 700;
+  font-size: 9.5px;
+  font-weight: 800;
   letter-spacing: 0.03em;
 }
 
