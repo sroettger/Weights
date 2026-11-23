@@ -1,65 +1,68 @@
 /**
  * Weights — Manegg Motion Architectural Floor Plan & Machine Catalog (28m × 18m)
  *
- * Section 1 (x = 0.8..17.2m) is photogrammetrically mapped from on-site reference photos:
- * - Top Wall (y = 0.8m): Corner exit door -> Matrix Power Rack -> Women/Men WC doors -> Entrance corridor
- * - Free-Weight Bay (y = 1.5..7.2m): Fixed Barbell Rack, Flat Bench, Preacher Curl, 3-Tier Dumbbell Rack + 2 Benches
- * - Central Partition Wall (x = 7.6..14.8m, y = 7.4m): Double-sided full-height mirrors
- * - Left Courtyard Window Wall (x = 0.8m -> steps to 1.8m at y = 11.4m):
- *   45° Back Extension -> Angled Smith Machine -> 45° Sled Leg Press -> Plate-Loaded Press -> Incline Barbell Bench + Glass Exit Doors
- * - Bottom Courtyard Window Wall (y = 17.0m, "MANEGG MOTION" glass):
- *   Standing Leverage Platform -> Glute-Ham Bench (GHD) -> Matrix Ultra Pec Fly & Seated Leg Curl (Section 2 seam)
- * - Center Cable Island (x = 6.4..11.6m, y = 9.5..12.2m):
- *   Matrix 4-Stack Multi-Tower (Lat Pulldown, Close Neutral Pulldown, Footplate Low Row, Hi-Lo Pulley #1–18) + Dual Cable Crossover
- *
- * Section 2 & Cardio Wing (x = 17.6..27.2m) is held in a dashed "Awaiting Photos" region until mapped.
+ * Triple-checked 360° photogrammetric reconstruction of Section 1 (North = Top, aligned to floor planks):
+ * - North Wall (y = 0.8m, x = 0.8..10.6m):
+ *   Corner door (1.9m) -> Matrix Power Rack (4.5m) -> WC Women (6.6m) -> WC Men (8.1m) -> Grey column (9.4m)
+ *   -> NE Hallway opening (x = 10.6..16.4m, y = 0.8..2.7m)
+ * - East Building Core & West-Facing Mirrors:
+ *   - Mirror Wall 1 (x = 10.6m, y = 2.8..8.6m): 3-Tier Dumbbell Rack running North–South + 2 Adjustable Benches in front
+ *   - 0.6m Eastward jog at mustard switch-box corner (y = 8.6m) -> Mirror Wall 2 (x = 11.2m, y = 8.6..12.1m)
+ *   - Raw Concrete Column + wipe bin (x = 11.1m, y = 12.2m), then WIDE 5m South-East opening (y = 12.2..17.2m) into Section 2!
+ * - West Courtyard Window Wall (x = 0.8m for y = 0.8..10.4m, stepping 0.8m East to x = 1.6m for y = 10.4..17.2m):
+ *   45° Back Ext (2.0m) -> Angled Smith Machine (5.0m) -> Wipe bin/column (6.7m) -> 45° Sled Leg Press (8.6m)
+ *   -> [0.8m inward wall step at y = 10.4m] -> Plate-Loaded Converging Press (12.0m) -> Plate tree (13.6m)
+ *   -> Incline Barbell Bench (15.0m) + Double Glass Courtyard Exit Doors (y = 14.5..16.8m)
+ * - South Courtyard Window Wall (y = 17.2m, x = 1.6..17.0m+):
+ *   Standing Leverage ("MANEGG MOTION" glass, x = 3.5m) -> GHD Bench (x = 5.9m) -> Column (7.3m)
+ *   -> Matrix Ultra Console 1 (x = 9.6m) -> Matrix Ultra Console 2 (x = 12.4m, continuing East into Section 2)
+ * - Center-South 4-Stack Cable Island (centered at x = 7.8m, y = 10.3m):
+ *   - West face (<-): Seated Low Cable Row (bench extending East–West to x = 5.5m)
+ *   - East face (->): Lat Pulldown (seat & thigh-roller pad extending East to x = 9.0m)
+ *   - North face (^): Triceps Pushdown + back pad
+ *   - South face (v): Hi-Lo Pulley #1–18 + North–South overhead bridge to 2nd Hi-Lo Crossover Column at (x = 7.8m, y = 13.6m)
  */
 
 export const FLOOR_DIMS = { width: 28, height: 18 };
 
 export const FLOOR_ZONES = [
-  { id: 'racks_db', code: '1A', name: 'Racks & Dumbbells (Sec 1)', x: 0.8, y: 0.8, w: 16.4, h: 6.6 },
-  { id: 'window_plate', code: '1B', name: 'Window Wall · Sled & Smith', x: 0.8, y: 4.5, w: 4.2, h: 12.5 },
-  { id: 'pull', code: '1C', name: '4-Stack Cable Island', x: 5.4, y: 8.4, w: 7.0, h: 5.2 },
-  { id: 'ultra_seam', code: '2A', name: 'Matrix Console Row', x: 11.8, y: 13.4, w: 5.4, h: 3.6 },
-  { id: 'push', code: '2A', name: 'Section 2 · Press', x: 17.8, y: 8.2, w: 9.4, h: 4.2 },
-  { id: 'lower', code: '2B', name: 'Section 2 · Lower Body', x: 17.8, y: 12.6, w: 9.4, h: 4.4 },
-  { id: 'core', code: '2C', name: 'Section 2 · Core & Mat', x: 17.8, y: 6.4, w: 9.4, h: 4.4 },
-  { id: 'cardio', code: '2D', name: 'Cardio Deck (Unmapped)', x: 17.8, y: 1.0, w: 9.4, h: 5.0 },
+  { id: 'racks_db', code: '1A', name: 'Free Weights & Racks', x: 0.8, y: 0.8, w: 9.8, h: 7.8 },
+  { id: 'window_plate', code: '1B', name: 'West Window · Sled & Smith', x: 0.8, y: 3.6, w: 3.6, h: 13.6 },
+  { id: 'pull', code: '1C', name: '4-Stack Cable & Crossover', x: 5.0, y: 9.0, w: 5.2, h: 5.6 },
+  { id: 'ultra_seam', code: '2A', name: 'South Window · Console Row', x: 8.6, y: 14.2, w: 6.4, h: 3.0 },
+  { id: 'push', code: '2A', name: 'Section 2 · Press', x: 16.8, y: 8.6, w: 10.4, h: 4.0 },
+  { id: 'lower', code: '2B', name: 'Section 2 · Lower Body', x: 16.8, y: 12.8, w: 10.4, h: 4.4 },
+  { id: 'core', code: '2C', name: 'Section 2 · Core & Mat', x: 16.8, y: 5.4, w: 10.4, h: 3.2 },
+  { id: 'cardio', code: '2D', name: 'Cardio Deck (Unmapped)', x: 16.8, y: 0.8, w: 10.4, h: 4.4 },
 ];
 
-/**
- * Architectural Section 1 fixtures (free-weight racks, benches, GHD, cable frames) rendered on the floor blueprint
- * so every physical landmark around the athlete is immediately recognizable.
- */
 export const FLOOR_FIXTURES = [
-  { id: 'fx_hyper', label: '45° Back', x: 1.5, y: 2.0, w: 1.3, h: 1.1 },
-  { id: 'fx_rack', label: 'Power Rack', x: 3.7, y: 1.1, w: 2.0, h: 1.9 },
-  { id: 'fx_bb_tree', label: 'Barbells', x: 4.0, y: 3.9, w: 1.4, h: 1.1 },
-  { id: 'fx_flat_bench', label: 'Flat Bench', x: 6.8, y: 1.8, w: 1.4, h: 1.6 },
-  { id: 'fx_preacher', label: 'Scott Curl', x: 6.8, y: 4.1, w: 1.2, h: 1.1 },
-  { id: 'fx_db_b1', label: '', x: 8.8, y: 4.6, w: 1.1, h: 0.7 },
-  { id: 'fx_db_b2', label: '', x: 10.7, y: 4.6, w: 1.1, h: 0.7 },
-  { id: 'fx_db_rack', label: 'Dumbbells (3-Tier)', x: 8.3, y: 6.0, w: 5.2, h: 1.0 },
-  { id: 'fx_pl_press', label: 'Plate Press', x: 2.1, y: 11.9, w: 1.7, h: 1.5 },
-  { id: 'fx_inc_bb', label: 'Incline Bar', x: 2.4, y: 14.3, w: 1.7, h: 1.4 },
-  { id: 'fx_platform', label: 'Leverage', x: 5.0, y: 15.2, w: 1.6, h: 1.3 },
-  { id: 'fx_ghd', label: 'GHD', x: 8.0, y: 15.2, w: 1.6, h: 1.3 },
-  { id: 'fx_4stack', label: '4-Stack', x: 7.3, y: 10.2, w: 1.6, h: 1.6 },
+  // North & Free-Weight Bay
+  { id: 'fx_hyper', label: '45° Back', x: 1.3, y: 1.5, w: 1.3, h: 1.1 },
+  { id: 'fx_rack', label: 'Power Rack', x: 3.6, y: 1.0, w: 2.0, h: 1.8 },
+  { id: 'fx_bb_tree', label: 'Barbells', x: 3.9, y: 3.8, w: 1.4, h: 1.2 },
+  { id: 'fx_flat_bench', label: 'Flat Bench', x: 6.8, y: 1.8, w: 1.5, h: 1.4 },
+  { id: 'fx_preacher', label: 'Scott Curl', x: 6.8, y: 3.9, w: 1.3, h: 1.1 },
+  { id: 'fx_db_b1', label: '', x: 6.4, y: 5.7, w: 1.4, h: 0.65 },
+  { id: 'fx_db_b2', label: '', x: 8.1, y: 6.0, w: 0.75, h: 1.25 },
+  { id: 'fx_db_rack', label: 'Dumbbells', x: 9.55, y: 3.3, w: 0.9, h: 4.9 },
+  // West & South Courtyard Window Walls
+  { id: 'fx_pl_press', label: 'Plate Press', x: 2.0, y: 11.2, w: 1.6, h: 1.6 },
+  { id: 'fx_inc_bb', label: 'Incline Bar', x: 2.8, y: 14.1, w: 1.6, h: 1.2 },
+  { id: 'fx_platform', label: 'Leverage', x: 2.6, y: 15.8, w: 1.7, h: 1.1 },
+  { id: 'fx_ghd', label: 'GHD', x: 5.1, y: 15.8, w: 1.7, h: 1.1 },
+  // Center 4-Stack Core Frame
+  { id: 'fx_4stack', label: '4-Stack', x: 7.15, y: 9.65, w: 1.3, h: 1.3 },
 ];
 
 export const FLOOR_PILLARS = [
-  { x: 0.85, y: 4.1, w: 0.55, h: 0.55 },
-  { x: 0.85, y: 7.4, w: 0.55, h: 0.55 },
-  { x: 9.4, y: 1.9, w: 0.6, h: 0.6 },
-  { x: 10.4, y: 16.35, w: 0.6, h: 0.6 },
-  { x: 14.3, y: 16.35, w: 0.6, h: 0.6 },
+  { x: 0.85, y: 3.25, w: 0.5, h: 0.5 }, // West wall pilaster 1
+  { x: 0.85, y: 6.55, w: 0.5, h: 0.5 }, // West wall pilaster 2 (+ wipe bin)
+  { x: 9.2, y: 1.8, w: 0.55, h: 0.55 }, // NE grey column by WC/corridor
+  { x: 7.2, y: 16.65, w: 0.5, h: 0.5 }, // South window pilaster
+  { x: 10.95, y: 12.05, w: 0.65, h: 0.65 }, // Raw concrete column at Section 2 entrance
 ];
 
-/**
- * Complete Manegg Motion coached equipment inventory.
- * - sectionMapped: true = verified from Section 1 photos; false = awaiting Section 2/Cardio photos.
- */
 export const GYM_MACHINES = [
   // === SECTION 1: PHOTO-VERIFIED STATIONS ===
   {
@@ -71,7 +74,7 @@ export const GYM_MACHINES = [
     tier: 't1_upper',
     zone: 'window_plate',
     sectionMapped: true,
-    pos: { x: 2.5, y: 5.8 },
+    pos: { x: 2.2, y: 5.0 },
     loadType: 'plate_per_side',
     tareKg: 20,
     movement: 'horiz_push',
@@ -93,7 +96,7 @@ export const GYM_MACHINES = [
     tier: 't2_lean_legs',
     zone: 'window_plate',
     sectionMapped: true,
-    pos: { x: 2.7, y: 9.5 },
+    pos: { x: 2.3, y: 8.6 },
     loadType: 'plate_per_side',
     tareKg: 48,
     movement: 'squat',
@@ -107,23 +110,45 @@ export const GYM_MACHINES = [
     jointStress: { fingers: 0, shoulder: 0, lower_back: 0.2, knee: 0.65 },
   },
   {
+    id: 'm_low_row',
+    name: 'Seated Low Cable Row',
+    gymLabel: 'Ruderzug · West Side of 4-Stack',
+    shortName: 'Cable Row',
+    muscleTag: 'Mid-Back & Scapulae',
+    tier: 't1_upper',
+    zone: 'pull',
+    sectionMapped: true,
+    labelAnchor: 'above',
+    pos: { x: 5.7, y: 10.3 },
+    loadType: 'stack',
+    movement: 'horiz_pull',
+    compound: true,
+    stepKg: 2.5,
+    baselineWorkKg: 35,
+    baselineReps: 10,
+    setup: 'Plant feet on angled Matrix footplate · Knees slightly bent · Sit tall with braced abs',
+    cue: 'Keep torso still (no swinging) · Pull dual handles to lower ribs & squeeze blades 1s',
+    muscles: { upper_back: 1.0, lats: 0.7, rear_delt: 0.5, biceps: 0.5 },
+    jointStress: { fingers: 0.5, shoulder: 0.2, lower_back: 0.2, knee: 0 },
+  },
+  {
     id: 'm_lat_pull',
     name: 'Lat Pulldown · Wide Bar',
-    gymLabel: 'Latzug · 4-Stack Cable Tower',
+    gymLabel: 'Latzug · East Side of 4-Stack',
     shortName: 'Lat Pull',
     muscleTag: 'Upper Back & Lats',
     tier: 't1_upper',
     zone: 'pull',
     sectionMapped: true,
     labelAnchor: 'above',
-    pos: { x: 6.9, y: 9.6 },
+    pos: { x: 9.2, y: 9.7 },
     loadType: 'stack',
     movement: 'vert_pull',
     compound: true,
     stepKg: 2.5,
     baselineWorkKg: 40,
     baselineReps: 10,
-    setup: '4-Stack Tower · Yellow pin locks thigh rollers snug · Wide angled overhead bar',
+    setup: 'East seat of 4-Stack Tower · Yellow pin locks thigh rollers snug · Wide angled bar',
     cue: 'Pull shoulders down away from ears first, then drive bar to upper chest',
     muscles: { lats: 1.0, upper_back: 0.6, biceps: 0.55, forearms: 0.4 },
     jointStress: { fingers: 0.55, shoulder: 0.35, lower_back: 0.05, knee: 0 },
@@ -137,8 +162,7 @@ export const GYM_MACHINES = [
     tier: 't1_upper',
     zone: 'pull',
     sectionMapped: true,
-    labelAnchor: 'above',
-    pos: { x: 9.3, y: 9.6 },
+    pos: { x: 9.2, y: 11.1 },
     loadType: 'stack',
     movement: 'vert_pull',
     compound: true,
@@ -151,67 +175,46 @@ export const GYM_MACHINES = [
     jointStress: { fingers: 0.5, shoulder: 0.25, lower_back: 0.05, knee: 0 },
   },
   {
-    id: 'm_low_row',
-    name: 'Seated Low Cable Row',
-    gymLabel: 'Ruderzug · Footplate Bench (4-Stack)',
-    shortName: 'Cable Row',
-    muscleTag: 'Mid-Back & Scapulae',
-    tier: 't1_upper',
-    zone: 'pull',
-    sectionMapped: true,
-    pos: { x: 6.4, y: 12.1 },
-    loadType: 'stack',
-    movement: 'horiz_pull',
-    compound: true,
-    stepKg: 2.5,
-    baselineWorkKg: 35,
-    baselineReps: 10,
-    setup: 'Plant feet on angled Matrix footplate · Knees slightly bent · Sit tall with braced abs',
-    cue: 'Keep torso still (no swinging) · Pull dual handles to lower ribs & squeeze blades 1s',
-    muscles: { upper_back: 1.0, lats: 0.7, rear_delt: 0.5, biceps: 0.5 },
-    jointStress: { fingers: 0.5, shoulder: 0.2, lower_back: 0.2, knee: 0 },
-  },
-  {
     id: 'm_cable_pull',
     name: 'Cable Rope Face Pull',
-    gymLabel: 'Hi-Lo Pulley #15–16 · Cable Tower',
+    gymLabel: 'Hi-Lo Pulley #15–16 · Crossover',
     shortName: 'Face Pull',
     muscleTag: 'Rear Shoulders & Rotator Cuff',
     tier: 't4_isolation',
     zone: 'pull',
     sectionMapped: true,
-    pos: { x: 11.4, y: 10.8 },
+    pos: { x: 7.8, y: 13.5 },
     loadType: 'stack',
     movement: 'scapular',
     compound: false,
     stepKg: 2.5,
     baselineWorkKg: 15,
     baselineReps: 14,
-    setup: 'Set numbered chrome pulley column to #15–16 (eye level) · Attach rope or dual straps',
+    setup: 'Set numbered chrome pulley column (#1–18) to #15–16 (eye level) · Rope or dual straps',
     cue: 'Pull toward forehead while rotating thumbs & wrists backward',
     muscles: { rear_delt: 1.0, upper_back: 0.7 },
     jointStress: { fingers: 0.25, shoulder: 0.1, lower_back: 0.05, knee: 0 },
   },
 
-  // === SECTION 1 -> 2 SEAM (VISIBLE IN BACKGROUND OF PXL_080701) ===
+  // === SECTION 1 -> 2 SEAM (VISIBLE ALONG SOUTH WINDOWS IN PXL_080650 / 080701) ===
   {
     id: 'm_butterfly',
     name: 'Pec Fly · Butterfly',
-    gymLabel: 'Butterfly · Matrix Ultra Console',
+    gymLabel: 'Butterfly · Matrix Console',
     shortName: 'Butterfly',
     muscleTag: 'Chest Isolation',
     tier: 't4_isolation',
     zone: 'ultra_seam',
     sectionMapped: true,
     labelAnchor: 'above',
-    pos: { x: 13.0, y: 15.2 },
+    pos: { x: 9.7, y: 16.0 },
     loadType: 'stack',
     movement: 'pec_fly',
     compound: false,
     stepKg: 2.5,
     baselineWorkKg: 30,
     baselineReps: 12,
-    setup: 'Matrix console machine by window · Seat so hands sit just below shoulder height',
+    setup: 'Matrix console station by South window · Seat so hands sit below shoulder height',
     cue: 'Soft bend in elbows · Sweep arms together in a wide hug',
     muscles: { chest: 1.0, shoulders: 0.3 },
     jointStress: { fingers: 0.05, shoulder: 0.5, lower_back: 0, knee: 0 },
@@ -219,14 +222,14 @@ export const GYM_MACHINES = [
   {
     id: 'm_leg_curl',
     name: 'Seated Leg Curl',
-    gymLabel: 'Beinbeuger · Matrix Ultra Console',
+    gymLabel: 'Beinbeuger · Matrix Console',
     shortName: 'Leg Curl',
     muscleTag: 'Back of Thighs · Heel-Hook Power',
     tier: 't3_posterior',
     zone: 'ultra_seam',
     sectionMapped: true,
     labelAnchor: 'above',
-    pos: { x: 15.8, y: 15.2 },
+    pos: { x: 12.6, y: 15.2 },
     loadType: 'stack',
     movement: 'knee_flex',
     compound: false,
@@ -249,7 +252,7 @@ export const GYM_MACHINES = [
     tier: 't1_upper',
     zone: 'push',
     sectionMapped: false,
-    pos: { x: 19.4, y: 10.6 },
+    pos: { x: 18.6, y: 11.4 },
     loadType: 'stack',
     movement: 'horiz_push',
     compound: true,
@@ -270,7 +273,7 @@ export const GYM_MACHINES = [
     tier: 't4_isolation',
     zone: 'lower',
     sectionMapped: false,
-    pos: { x: 19.4, y: 14.8 },
+    pos: { x: 18.6, y: 15.2 },
     loadType: 'stack',
     movement: 'knee_ext',
     compound: false,
@@ -291,7 +294,7 @@ export const GYM_MACHINES = [
     tier: 't4_isolation',
     zone: 'lower',
     sectionMapped: false,
-    pos: { x: 22.8, y: 14.8 },
+    pos: { x: 22.2, y: 15.2 },
     loadType: 'plate_per_side',
     tareKg: 10,
     movement: 'calf',
@@ -313,7 +316,7 @@ export const GYM_MACHINES = [
     tier: 't2_lean_legs',
     zone: 'lower',
     sectionMapped: false,
-    pos: { x: 22.8, y: 11.8 },
+    pos: { x: 22.2, y: 11.4 },
     loadType: 'plate_per_side',
     tareKg: 15,
     movement: 'hinge',
@@ -335,7 +338,7 @@ export const GYM_MACHINES = [
     tier: 't3_posterior',
     zone: 'core',
     sectionMapped: false,
-    pos: { x: 25.8, y: 11.8 },
+    pos: { x: 25.6, y: 11.4 },
     loadType: 'stack',
     movement: 'hinge',
     compound: false,
@@ -356,7 +359,7 @@ export const GYM_MACHINES = [
     tier: 't4_isolation',
     zone: 'core',
     sectionMapped: false,
-    pos: { x: 22.8, y: 8.2 },
+    pos: { x: 21.8, y: 7.6 },
     loadType: 'bodyweight',
     movement: 'core',
     compound: false,
@@ -377,7 +380,7 @@ export const GYM_MACHINES = [
     tier: 't4_isolation',
     zone: 'core',
     sectionMapped: false,
-    pos: { x: 25.8, y: 8.2 },
+    pos: { x: 25.6, y: 7.6 },
     loadType: 'stack',
     movement: 'core',
     compound: false,
@@ -398,7 +401,7 @@ export const GYM_MACHINES = [
     tier: 'cardio',
     zone: 'cardio',
     sectionMapped: false,
-    pos: { x: 19.0, y: 3.6 },
+    pos: { x: 18.6, y: 3.4 },
     loadType: 'cardio',
     movement: 'cardio_run',
     compound: false,
@@ -419,7 +422,7 @@ export const GYM_MACHINES = [
     tier: 'cardio',
     zone: 'cardio',
     sectionMapped: false,
-    pos: { x: 21.4, y: 3.6 },
+    pos: { x: 21.0, y: 3.4 },
     loadType: 'cardio',
     movement: 'cardio_stairs',
     compound: false,
@@ -440,7 +443,7 @@ export const GYM_MACHINES = [
     tier: 'cardio',
     zone: 'cardio',
     sectionMapped: false,
-    pos: { x: 23.8, y: 3.6 },
+    pos: { x: 23.5, y: 3.4 },
     loadType: 'cardio',
     movement: 'cardio_row',
     compound: false,
@@ -461,7 +464,7 @@ export const GYM_MACHINES = [
     tier: 'cardio',
     zone: 'cardio',
     sectionMapped: false,
-    pos: { x: 26.2, y: 3.6 },
+    pos: { x: 26.0, y: 3.4 },
     loadType: 'cardio',
     movement: 'cardio_bike',
     compound: false,
@@ -499,10 +502,6 @@ export function getZoneInfo(zoneId) {
   return FLOOR_ZONES.find((z) => z.id === zoneId) || FLOOR_ZONES[0];
 }
 
-/**
- * Find best substitute station on the floor requiring true biomechanical / muscle overlap
- * (unless target is cardio, where any cardio machine is valid).
- */
 export function findBestSubstitute(targetMachine, opts = {}) {
   const {
     excludeIds = [],
@@ -551,9 +550,9 @@ export function findBestSubstitute(targetMachine, opts = {}) {
 }
 
 /**
- * Renders the architectural 2D SVG floor plan of Manegg Motion:
- * - Left (x = 0.8..17.2m): Photo-verified Section 1 (stepped window wall, glass exit, WCs, columns, mirror partition, racks & 4-stack cable tower)
- * - Right (x = 17.6..27.2m): Dashed "Section 2 & Cardio · Next Photos" region
+ * Renders the triple-checked 2D architectural floor plan of Manegg Motion:
+ * - Section 1 wraps around the Central WC/Core block (with West-facing Dumbbell Mirror + 0.6m jog + 2nd West-facing Mirror),
+ *   connecting Eastward via BOTH the NE Hallway (top) and the wide South-East opening past the Raw Concrete Column!
  */
 export function renderFloorPlanSvg({
   activeId = null,
@@ -575,82 +574,106 @@ export function renderFloorPlanSvg({
   const busySet = new Set(busyIds);
   const routeSet = new Set(routeIds);
 
-  // 1. Section 1 mapped floor polygon (includes exact 1.0m inward wall step at y = 11.4m from PXL_080645)
+  // Exact Section 1 mapped floor polygon (including NE hallway & SE wide opening around the central building core)
   const sec1Pts = [
     [0.8, 0.8],
-    [17.2, 0.8],
-    [17.2, 17.0],
-    [1.8, 17.0],
-    [1.8, 11.4],
-    [0.8, 11.4],
+    [16.0, 0.8],
+    [16.0, 2.7],
+    [10.6, 2.7],
+    [10.6, 8.6],
+    [11.2, 8.6],
+    [11.2, 12.2],
+    [16.0, 12.2],
+    [16.0, 17.2],
+    [1.6, 17.2],
+    [1.6, 10.4],
+    [0.8, 10.4],
+  ]
+    .map(([x, y]) => `${sx(x).toFixed(1)},${sy(y).toFixed(1)}`)
+    .join(' ');
+
+  // Central WC / Building Core polygon (behind the WC doors and East Mirror walls)
+  const corePts = [
+    [10.6, 2.7],
+    [16.0, 2.7],
+    [16.0, 12.2],
+    [11.2, 12.2],
+    [11.2, 8.6],
+    [10.6, 8.6],
   ]
     .map(([x, y]) => `${sx(x).toFixed(1)},${sy(y).toFixed(1)}`)
     .join(' ');
 
   const archSvg = `
-    <!-- Section 1 (Mapped) & Section 2 (Pending Photos) Floor Surfaces -->
+    <!-- Section 1 Mapped Floor + Central Core + Section 2 Unmapped Wing -->
     <polygon points="${sec1Pts}" class="fp-sec1-bg" />
-    <rect x="${sx(17.6).toFixed(1)}" y="${sy(0.8).toFixed(1)}" width="${sx(9.6).toFixed(1)}" height="${sy(16.2).toFixed(1)}" rx="8" class="fp-sec2-bg" />
+    <polygon points="${corePts}" class="fp-mirror-wall" opacity="0.45" />
+    <rect x="${sx(16.4).toFixed(1)}" y="${sy(0.8).toFixed(1)}" width="${sx(10.8).toFixed(1)}" height="${sy(16.4).toFixed(1)}" rx="8" class="fp-sec2-bg" />
 
-    <!-- Section 1 Solid Architectural Walls (Top WC/Rack wall, stepped Left window wall, Bottom window wall) -->
-    <polyline points="${sx(10.6)},${sy(0.8)} ${sx(0.8)},${sy(0.8)} ${sx(0.8)},${sy(11.4)} ${sx(1.8)},${sy(11.4)} ${sx(1.8)},${sy(17.0)} ${sx(17.2)},${sy(17.0)}" class="fp-wall" />
+    <!-- North Wall + Stepped West Window Wall + South Window Wall -->
+    <polyline points="${sx(10.6)},${sy(0.8)} ${sx(0.8)},${sy(0.8)} ${sx(0.8)},${sy(10.4)} ${sx(1.6)},${sy(10.4)} ${sx(1.6)},${sy(17.2)} ${sx(16.0)},${sy(17.2)}" class="fp-wall" />
 
-    <!-- Courtyard Window Bays (Teal) -->
-    <line x1="${sx(0.8)}" y1="${sy(1.7)}" x2="${sx(0.8)}" y2="${sy(3.9)}" class="fp-window" />
-    <line x1="${sx(0.8)}" y1="${sy(4.8)}" x2="${sx(0.8)}" y2="${sy(7.2)}" class="fp-window" />
-    <line x1="${sx(0.8)}" y1="${sy(8.1)}" x2="${sx(0.8)}" y2="${sy(11.1)}" class="fp-window" />
-    <line x1="${sx(1.8)}" y1="${sy(11.7)}" x2="${sx(1.8)}" y2="${sy(14.3)}" class="fp-window" />
-    <line x1="${sx(4.3)}" y1="${sy(17.0)}" x2="${sx(7.2)}" y2="${sy(17.0)}" class="fp-window" />
-    <line x1="${sx(7.7)}" y1="${sy(17.0)}" x2="${sx(10.2)}" y2="${sy(17.0)}" class="fp-window" />
-    <line x1="${sx(11.2)}" y1="${sy(17.0)}" x2="${sx(14.1)}" y2="${sy(17.0)}" class="fp-window" />
-    <line x1="${sx(15.1)}" y1="${sy(17.0)}" x2="${sx(17.1)}" y2="${sy(17.0)}" class="fp-window" />
+    <!-- East Core Wall (Dumbbell Mirror -> 0.6m Mustard Jog -> 2nd Mirror to Concrete Column) -->
+    <polyline points="${sx(10.6)},${sy(2.7)} ${sx(10.6)},${sy(8.6)} ${sx(11.2)},${sy(8.6)} ${sx(11.2)},${sy(12.1)}" class="fp-wall" />
+    <line x1="${sx(10.42)}" y1="${sy(2.9)}" x2="${sx(10.42)}" y2="${sy(8.45)}" class="fp-mirror-glass" />
+    <line x1="${sx(11.02)}" y1="${sy(8.8)}" x2="${sx(11.02)}" y2="${sy(11.9)}" class="fp-mirror-glass" />
 
-    <!-- Doors (Corner door, 2 WC doors, Glass Courtyard Exit) -->
+    <!-- Courtyard Window Bays (West Wall + South Wall) -->
+    <line x1="${sx(0.8)}" y1="${sy(1.4)}" x2="${sx(0.8)}" y2="${sy(3.1)}" class="fp-window" />
+    <line x1="${sx(0.8)}" y1="${sy(3.9)}" x2="${sx(0.8)}" y2="${sy(6.4)}" class="fp-window" />
+    <line x1="${sx(0.8)}" y1="${sy(7.2)}" x2="${sx(0.8)}" y2="${sy(10.1)}" class="fp-window" />
+    <line x1="${sx(1.6)}" y1="${sy(10.8)}" x2="${sx(1.6)}" y2="${sy(13.8)}" class="fp-window" />
+    <line x1="${sx(2.4)}" y1="${sy(17.2)}" x2="${sx(4.7)}" y2="${sy(17.2)}" class="fp-window" />
+    <line x1="${sx(5.1)}" y1="${sy(17.2)}" x2="${sx(7.0)}" y2="${sy(17.2)}" class="fp-window" />
+    <line x1="${sx(7.8)}" y1="${sy(17.2)}" x2="${sx(10.6)}" y2="${sy(17.2)}" class="fp-window" />
+    <line x1="${sx(11.1)}" y1="${sy(17.2)}" x2="${sx(15.8)}" y2="${sy(17.2)}" class="fp-window" />
+
+    <!-- Doors (NW Door, 2 WC Doors on North Wall, Double Glass Exit Doors at SW of West Wall) -->
     <line x1="${sx(1.5)}" y1="${sy(0.8)}" x2="${sx(2.4)}" y2="${sy(0.8)}" class="fp-door" />
-    <line x1="${sx(6.6)}" y1="${sy(0.8)}" x2="${sx(7.4)}" y2="${sy(0.8)}" class="fp-door" />
-    <line x1="${sx(8.0)}" y1="${sy(0.8)}" x2="${sx(8.8)}" y2="${sy(0.8)}" class="fp-door" />
-    <line x1="${sx(1.8)}" y1="${sy(14.8)}" x2="${sx(1.8)}" y2="${sy(16.5)}" class="fp-door" />
+    <line x1="${sx(6.3)}" y1="${sy(0.8)}" x2="${sx(7.2)}" y2="${sy(0.8)}" class="fp-door" />
+    <line x1="${sx(7.8)}" y1="${sy(0.8)}" x2="${sx(8.7)}" y2="${sy(0.8)}" class="fp-door" />
+    <line x1="${sx(1.6)}" y1="${sy(14.5)}" x2="${sx(1.6)}" y2="${sy(16.7)}" class="fp-door" />
 
-    <!-- Central Double-Sided Mirror Partition Wall -->
-    <rect x="${sx(7.7)}" y="${sy(7.3)}" width="${sx(7.1)}" height="${sy(0.42)}" rx="2" class="fp-mirror-wall" />
-    <line x1="${sx(7.8)}" y1="${sy(7.22)}" x2="${sx(14.7)}" y2="${sy(7.22)}" class="fp-mirror-glass" />
-    <line x1="${sx(7.8)}" y1="${sy(7.8)}" x2="${sx(14.7)}" y2="${sy(7.8)}" class="fp-mirror-glass" />
-
-    <!-- Structural Concrete Columns -->
+    <!-- Structural Columns -->
     ${FLOOR_PILLARS.map(
       (p) =>
         `<rect x="${sx(p.x).toFixed(1)}" y="${sy(p.y).toFixed(1)}" width="${sx(p.w).toFixed(1)}" height="${sy(p.h).toFixed(1)}" rx="1.5" class="fp-pillar" />`
     ).join('')}
 
-    <!-- Overhead Cable Bridge (4-Stack Tower <-> Dual Cable Crossover) -->
-    <line x1="${sx(8.1)}" y1="${sy(10.9)}" x2="${sx(11.4)}" y2="${sy(10.8)}" stroke="var(--border-strong)" stroke-width="2.4" />
+    <!-- North–South Overhead Cable Crossover Bridge (4-Stack Tower -> 2nd Hi-Lo Column) -->
+    <line x1="${sx(7.8)}" y1="${sy(10.95)}" x2="${sx(7.8)}" y2="${sy(13.5)}" stroke="var(--border-strong)" stroke-width="2.6" />
 
     ${
       !compact
         ? `
-      <text x="${sx(7.7)}" y="${sy(1.55)}" text-anchor="middle" class="fp-arch-label">WC</text>
-      <text x="${sx(12.2)}" y="${sy(1.55)}" text-anchor="middle" class="fp-arch-label"> Corridor ↗</text>
-      <text x="${sx(11.2)}" y="${sy(8.45)}" text-anchor="middle" class="fp-arch-label">Mirror Partition</text>
-      <text x="${sx(2.7)}" y="${sy(16.65)}" class="fp-arch-label">Exit</text>
-      <text x="${sx(22.4)}" y="${sy(1.75)}" text-anchor="middle" class="fp-zone-label">Sec 2 &amp; Cardio (Next Photos →)</text>
-      <line x1="${sx(18.2)}" y1="${sy(6.2)}" x2="${sx(26.6)}" y2="${sy(6.2)}" stroke="var(--border)" stroke-dasharray="4 4" />
+      <text x="${sx(7.5)}" y="${sy(1.48)}" text-anchor="middle" class="fp-arch-label">WC</text>
+      <text x="${sx(13.3)}" y="${sy(1.95)}" text-anchor="middle" class="fp-arch-label">Hallway →</text>
+      <text x="${sx(13.5)}" y="${sy(7.6)}" text-anchor="middle" class="fp-arch-label">Core / Mirrors</text>
+      <text x="${sx(14.2)}" y="${sy(13.4)}" text-anchor="middle" class="fp-arch-label">Sec 2 →</text>
+      <text x="${sx(21.8)}" y="${sy(1.85)}" text-anchor="middle" class="fp-zone-label">Sec 2 &amp; Cardio (Next Photos)</text>
+      <line x1="${sx(17.0)}" y1="${sy(5.4)}" x2="${sx(26.6)}" y2="${sy(5.4)}" stroke="var(--border)" stroke-dasharray="4 4" />
     `
         : ''
     }
   `;
 
   const fixturesSvg = !compact
-    ? FLOOR_FIXTURES.map(
-        (fx) => `
+    ? FLOOR_FIXTURES.map((fx) => {
+        const isVert = fx.h > fx.w * 2;
+        const cx = sx(fx.x + fx.w / 2).toFixed(1);
+        const cy = sy(fx.y + fx.h / 2).toFixed(1);
+        return `
       <g class="fp-fixture">
-        <rect x="${sx(fx.x).toFixed(1)}" y="${sy(fx.y).toFixed(1)}" width="${sx(fx.w).toFixed(1)}" height="${sy(fx.h).toFixed(1)}" rx="3" />
+        <rect x="${sx(fx.x).toFixed(1)}" y="${sy(fx.y).toFixed(1)}" width="${sx(fx.w).toFixed(1)}" height="${sy(fx.h).toFixed(1)}" rx="2.5" />
         ${
           fx.label
-            ? `<text x="${sx(fx.x + fx.w / 2).toFixed(1)}" y="${(sy(fx.y + fx.h / 2) + 2.6).toFixed(1)}" text-anchor="middle" class="fp-fixture-label">${fx.label}</text>`
+            ? `<text x="${cx}" y="${(Number(cy) + 2.4).toFixed(1)}" text-anchor="middle" ${
+                isVert ? `transform="rotate(-90 ${cx} ${cy})"` : ''
+              } class="fp-fixture-label">${fx.label}</text>`
             : ''
         }
-      </g>`
-      ).join('')
+      </g>`;
+      }).join('')
     : '';
 
   let pathSvg = '';

@@ -5,8 +5,8 @@
 import { GYM_MACHINES, getMachineById } from './floor.js';
 import { totalMechanicalKg, estimate1RM, resolveMachineE1rm } from './science.js';
 
-export const STORAGE_KEY = 'weights_ai_coach_v8';
-const LEGACY_KEYS = ['weights_ai_coach_v7', 'weights_ai_coach_v6', 'weights_ai_coach_v5'];
+export const STORAGE_KEY = 'weights_ai_coach_v9';
+const LEGACY_KEYS = ['weights_ai_coach_v8', 'weights_ai_coach_v7', 'weights_ai_coach_v6', 'weights_ai_coach_v5'];
 
 function buildSeedLifts(now) {
   const day = 86400000;
