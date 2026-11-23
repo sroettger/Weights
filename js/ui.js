@@ -1,10 +1,12 @@
 /**
- * Weights — Crisp Zero-Prose AI Coach Renderers
+ * Weights — Overhauled Clean UI Renderers
+ * Plain-English + German gym stickers + Inline Machine Diagrams + 1-Tap Rep Logging
  */
 
 import {
   GYM_MACHINES,
   getMachineById,
+  getZoneInfo,
   renderFloorPlanSvg,
 } from './floor.js';
 import {
@@ -13,7 +15,10 @@ import {
   FOCUS_AREAS,
   PAIN_LOCATIONS,
   MESOCYCLE_WEEKS,
+  getMesocyclePhase,
+  buildRepChoices,
   formatLoad,
+  formatRepRange,
   formatDurationShort,
   formatRelativeDays,
 } from './science.js';
@@ -50,11 +55,11 @@ export function renderLiveHrStrip(wearableSnap, hrBand = null) {
   if (!isLive) return '';
 
   const bpm = wearableSnap.bpm;
-  let cue = `Z${wearableSnap.zone.decimal || 0} · ${wearableSnap.zone.label}`;
+  let cue = bpm ? `${wearableSnap.zone.label}` : 'Acquiring pulse…';
   if (bpm && hrBand) {
-    if (bpm < hrBand.min) cue = `Target ${hrBand.min}–${hrBand.max} · +Pace`;
+    if (bpm < hrBand.min) cue = `Target ${hrBand.min}–${hrBand.max} · Speed up slightly`;
     else if (bpm > hrBand.max) cue = `Target ${hrBand.min}–${hrBand.max} · Ease pace`;
-    else cue = `In zone (${hrBand.min}–${hrBand.max})`;
+    else cue = `In target zone (${hrBand.min}–${hrBand.max})`;
   }
 
   let waveSvg = '';
@@ -88,7 +93,7 @@ export function renderLiveHrStrip(wearableSnap, hrBand = null) {
   `;
 }
 
-export function renderCoachStage(state, session, timerSnap, wearableSnap, checkinDraft, briefingView = 'plan') {
+export function renderCoachStage(state, session, timerSnap, wearableSnap, briefingView = 'plan') {
   if (!session) return '';
 
   if (session.phase === 'briefing') {
@@ -100,12 +105,12 @@ export function renderCoachStage(state, session, timerSnap, wearableSnap, checki
   if (session.phase === 'resting' && timerSnap.running) {
     return renderRestStage(state, session, timerSnap, wearableSnap);
   }
-  return renderActiveStepStage(state, session, timerSnap, wearableSnap, checkinDraft);
+  return renderActiveStepStage(state, session, timerSnap, wearableSnap);
 }
 
 const PREWORKOUT_FEEDBACK_CHIPS = [
   { label: 'Climbed yesterday', text: 'climbed yesterday fingers tired' },
-  { label: 'Low energy', text: 'low energy today' },
+  { label: 'Tired today', text: 'low energy today' },
   { label: 'Feel strong', text: 'feeling strong push hard' },
   { label: '+ Core', text: 'more core' },
   { label: 'Skip cardio', text: 'skip cardio' },
@@ -115,10 +120,15 @@ const PREWORKOUT_FEEDBACK_CHIPS = [
 function renderBriefingStage(state, session, wearableSnap, briefingView = 'plan') {
   const athlete = state.athlete;
   const unit = state.settings.unit;
-  const goal = GOAL_PROFILES[athlete.goal] || GOAL_PROFILES.max_strength;
+  const meso = getMesocyclePhase(session.mesoWeek || athlete.mesocycle?.week || 1);
   const routeIds = session.steps.map((s) => s.stationId);
   const rd = session.readiness;
   const rdClass = rd.tier === 'prime' || rd.tier === 'ready' ? 'is-prime' : 'is-warn';
+
+  const phaseLine =
+    athlete.goal === 'max_strength'
+      ? `Block ${meso.block} · ${meso.blockName} (Week ${meso.week} of 8)`
+      : `${GOAL_PROFILES[athlete.goal]?.name || 'Custom Plan'}`;
 
   const splitBtns = Object.values(SPLIT_TEMPLATES)
     .map(
@@ -157,14 +167,15 @@ function renderBriefingStage(state, session, wearableSnap, briefingView = 'plan'
             const m = getMachineById(st.stationId);
             let rxLine = '';
             if (st.type === 'warmup') {
-              rxLine = `${Math.round(st.durationSec / 60)}m warm-up · ${st.hrBand.min}–${st.hrBand.max} bpm`;
+              rxLine = `${Math.round(st.durationSec / 60)} min warm-up · ${st.hrBand.min}–${st.hrBand.max} bpm`;
             } else if (st.type === 'cardio') {
-              rxLine = `${Math.round(st.durationSec / 60)}m ${st.protocol === 'vo2_4x3' ? 'VO₂ 4×3m' : 'Zone 2'} · ${st.hrBand.min}–${st.hrBand.max} bpm`;
+              rxLine = `${Math.round(st.durationSec / 60)} min ${st.protocol === 'vo2_4x3' ? 'VO₂ intervals' : 'steady cardio'} · ${st.hrBand.min}–${st.hrBand.max} bpm`;
             } else {
               const work = st.sets.filter((s) => s.kind === 'work');
-              const hasWarm = st.sets.some((s) => s.kind === 'warmup');
-              const loadTxt = formatLoad(m, work[0]?.weightKg || 0, unit).primary;
-              rxLine = `${hasWarm ? '1w + ' : ''}${work.length}×${work[0]?.targetReps || 5} @ ${loadTxt}`;
+              const firstW = work[0] || {};
+              const repStr = formatRepRange(firstW.repMin, firstW.repMax, firstW.targetReps);
+              const loadTxt = formatLoad(m, firstW.weightKg || 0, unit).primary;
+              rxLine = `${work.length} sets × ${repStr} reps @ ${loadTxt}`;
             }
             if (st.partner) {
               rxLine += ` · 👥 ${st.partner.stationName}`;
@@ -172,18 +183,19 @@ function renderBriefingStage(state, session, wearableSnap, briefingView = 'plan'
 
             return `
               <div class="briefing-step-row">
-                <button type="button" class="briefing-step-main" data-action="open-form-modal-for" data-machine-id="${esc(st.stationId)}" title="How to use ${esc(m?.name)}">
+                <button type="button" class="briefing-step-main" data-action="open-form-modal-for" data-machine-id="${esc(st.stationId)}" title="Preview ${esc(m?.name)}">
                   <span class="briefing-num">${idx + 1}</span>
                   <span style="min-width:0;">
                     <span class="briefing-step-title">${esc(m?.name || '')}</span>
+                    <span class="briefing-step-sub">${esc(m?.gymLabel || '')} · ${esc(m?.muscleTag || '')}</span>
                     <span class="briefing-step-rx">${esc(rxLine)}</span>
                   </span>
                 </button>
                 <div class="briefing-step-actions">
-                  <button type="button" class="mini-act-btn" data-action="briefing-swap-step" data-index="${idx}" aria-label="Swap station" title="Swap station">↻</button>
+                  <button type="button" class="mini-act-btn" data-action="briefing-swap-step" data-index="${idx}" aria-label="Swap exercise" title="Swap exercise">↻</button>
                   ${
                     session.steps.length > 2
-                      ? `<button type="button" class="mini-act-btn" data-action="briefing-remove-step" data-index="${idx}" aria-label="Remove block" title="Remove">×</button>`
+                      ? `<button type="button" class="mini-act-btn" data-action="briefing-remove-step" data-index="${idx}" aria-label="Remove exercise" title="Remove">×</button>`
                       : ''
                   }
                 </div>
@@ -201,7 +213,7 @@ function renderBriefingStage(state, session, wearableSnap, briefingView = 'plan'
   return `
     <section class="stage">
       <div class="stage-top">
-        <span class="step-crumb">Week ${session.mesoWeek} · ${esc(session.mesoName)} · Day ${athlete.mesocycle.sessionInWeek}/${athlete.daysPerWeek}</span>
+        <span class="step-crumb">${esc(phaseLine)}</span>
         <button type="button" class="chip ${rdClass}" data-action="open-goal-modal">${esc(rd.label)} · ${esc(rd.summary)}</button>
       </div>
 
@@ -214,7 +226,9 @@ function renderBriefingStage(state, session, wearableSnap, briefingView = 'plan'
             </button>
           </div>
           <p class="station-setup">${esc(
-            session.feedbackNote ? `Adjusted: ${session.feedbackNote}` : `${session.splitReason} · ${goal.short}`
+            session.feedbackNote
+              ? `Adjusted: ${session.feedbackNote}`
+              : `${session.splitReason} · Push ~1–2 reps shy of failure`
           )}</p>
         </div>
 
@@ -225,10 +239,10 @@ function renderBriefingStage(state, session, wearableSnap, briefingView = 'plan'
 
         <div class="briefing-plan-card">
           <div class="briefing-card-head">
-            <span class="sheet-label">Session Summary · ${session.estimatedMin} min</span>
+            <span class="sheet-label">Today's Plan · ~${session.estimatedMin} min</span>
             <div class="seg-row">
-              <button type="button" class="seg-btn ${briefingView === 'plan' ? 'is-active' : ''}" style="padding:4px 9px;font-size:0.71rem;" data-action="set-briefing-view" data-view="plan">Plan (${session.steps.length})</button>
-              <button type="button" class="seg-btn ${briefingView === 'map' ? 'is-active' : ''}" style="padding:4px 9px;font-size:0.71rem;" data-action="set-briefing-view" data-view="map">Floor Route</button>
+              <button type="button" class="seg-btn ${briefingView === 'plan' ? 'is-active' : ''}" style="padding:4px 9px;font-size:0.71rem;" data-action="set-briefing-view" data-view="plan">Exercises (${session.steps.length})</button>
+              <button type="button" class="seg-btn ${briefingView === 'map' ? 'is-active' : ''}" style="padding:4px 9px;font-size:0.71rem;" data-action="set-briefing-view" data-view="map">Gym Map</button>
             </div>
           </div>
           ${summaryContentHtml}
@@ -237,7 +251,7 @@ function renderBriefingStage(state, session, wearableSnap, briefingView = 'plan'
         <div class="sheet-section" style="gap:6px;">
           <div class="seg-row" aria-label="Quick pre-workout feedback">${quickFeedbackHtml}</div>
           <form id="briefing-feedback-form" class="feedback-bar">
-            <input id="briefing-feedback-input" name="feedback" class="field-input" style="height:38px;font-size:0.81rem;" type="text" placeholder="Adjust plan (e.g. climbed yesterday, swap row, 35m)..." />
+            <input id="briefing-feedback-input" name="feedback" class="field-input" style="height:38px;font-size:0.81rem;" type="text" placeholder="Want to change anything? (e.g. climbed yesterday, swap row, 30m)..." />
             <button type="submit" class="btn btn-secondary btn-sm" style="height:38px;">Adjust</button>
           </form>
         </div>
@@ -254,10 +268,11 @@ function renderBriefingStage(state, session, wearableSnap, briefingView = 'plan'
   `;
 }
 
-function renderActiveStepStage(state, session, timerSnap, wearableSnap, checkinDraft) {
+function renderActiveStepStage(state, session, timerSnap, wearableSnap) {
   const step = getActiveStep(session);
   if (!step) return '';
   const machine = getMachineById(step.stationId);
+  const zoneInfo = getZoneInfo(machine.zone);
   const unit = state.settings.unit;
   const stepNum = session.currentStepIndex + 1;
   const totalSteps = session.steps.length;
@@ -271,10 +286,32 @@ function renderActiveStepStage(state, session, timerSnap, wearableSnap, checkinD
     `
     : '';
 
-  const guide = getMachineGuide(machine.id);
-  const isNewStation =
-    !state.athlete.lifts?.[machine.id] &&
-    !state.athlete.formNotes?.[machine.id]?.seenGuide;
+  const locationBtnHtml = `
+    <button type="button" class="walk-pill ${step.walkMeters >= 5 ? 'is-accent' : ''}" data-action="open-floor-modal">
+      ${step.walkMeters > 0 ? `Walk ${step.walkMeters}m · Map` : `${esc(zoneInfo.name)} · Map`}
+    </button>
+  `;
+
+  const machineHeaderHtml = `
+    <div>
+      <h2 class="station-title">${esc(machine.name)}</h2>
+      <div class="machine-meta-row">
+        <span class="gym-sticker-tag">${esc(machine.gymLabel || machine.name)}</span>
+        <span class="muscle-tag-text">${esc(machine.muscleTag || '')}</span>
+      </div>
+    </div>
+  `;
+
+  const visualCardHtml = `
+    <button type="button" class="machine-visual-card" data-action="open-form-modal" data-tab="guide">
+      <span class="machine-visual-thumb">${renderFormDiagramSvg(machine)}</span>
+      <span class="machine-visual-copy">
+        <span class="machine-setup-text">${esc(step.setup)}</span>
+        <span class="machine-cue-text">${esc(step.cue)}</span>
+        <span class="machine-guide-hint">Tap for full setup &amp; form guide ›</span>
+      </span>
+    </button>
+  `;
 
   // Timed Guided Block (Warm-up or Cardio)
   if (step.type === 'warmup' || step.type === 'cardio') {
@@ -285,41 +322,28 @@ function renderActiveStepStage(state, session, timerSnap, wearableSnap, checkinD
     return `
       <section class="stage">
         <div class="stage-top">
-          <span class="step-crumb">Block ${stepNum}/${totalSteps} · Zone ${esc(step.zoneCode)}</span>
-          ${
-            step.walkMeters > 0
-              ? `<button type="button" class="walk-pill is-accent" data-action="open-floor-modal">Walk ${step.walkMeters}m · Map</button>`
-              : `<button type="button" class="walk-pill" data-action="open-floor-modal">Zone ${esc(step.zoneCode)} · Map</button>`
-          }
+          <span class="step-crumb">Step ${stepNum} of ${totalSteps}</span>
+          ${locationBtnHtml}
         </div>
 
         <div class="stage-body">
-          <div class="station-head-row">
-            <div>
-              <h2 class="station-title">${esc(machine.name)}</h2>
-              <p class="station-setup">${esc(step.setup)}</p>
-            </div>
-            <button type="button" class="howto-pill" data-action="open-form-modal" data-tab="guide">How to Use</button>
-          </div>
+          ${machineHeaderHtml}
+          ${visualCardHtml}
 
           <div class="hero-panel is-rest">
             <span class="hero-value">${formatClock(displaySec)}</span>
             <span class="hero-sub">${
               step.type === 'warmup'
-                ? `Warm-up · ${band.min}–${band.max} bpm`
+                ? `Easy warm-up · ${band.min}–${band.max} bpm`
                 : step.protocol === 'vo2_4x3'
-                ? `VO₂max 4×3m · ${band.min}–${band.max} bpm`
-                : `Zone 2 · ${band.min}–${band.max} bpm`
+                ? `4 × 3 min hard · ${band.min}–${band.max} bpm`
+                : `Steady cardio · ${band.min}–${band.max} bpm`
             }</span>
             ${
               isRunningThis
                 ? `<div class="rest-progress-track"><div class="rest-progress-fill" style="width:${Math.round(timerSnap.progress * 100)}%;"></div></div>`
                 : ''
             }
-          </div>
-
-          <div class="cue-line">
-            <span>${esc(step.cue)}</span>
           </div>
 
           ${partnerHtml}
@@ -338,14 +362,13 @@ function renderActiveStepStage(state, session, timerSnap, wearableSnap, checkinD
             `
               : `
               <button type="button" class="btn btn-primary cta-giant" data-action="start-timed-step">
-                Start ${formatClock(step.durationSec)}
+                Start ${formatClock(step.durationSec)} Timer
               </button>
             `
           }
           <div class="quiet-actions">
-            <button type="button" class="quiet-btn" data-action="machine-busy">Busy</button>
-            <button type="button" class="quiet-btn" data-action="open-form-modal" data-tab="fix">Form / Issue</button>
-            <button type="button" class="quiet-btn" data-action="open-pain-modal">Pain</button>
+            <button type="button" class="quiet-btn" data-action="machine-busy">Machine Busy</button>
+            <button type="button" class="quiet-btn" data-action="open-form-modal" data-tab="fix">Feels Wrong / Pain</button>
             <button type="button" class="quiet-btn" data-action="complete-timed-step">Skip</button>
           </div>
         </div>
@@ -364,92 +387,75 @@ function renderActiveStepStage(state, session, timerSnap, wearableSnap, checkinD
   const dotsHtml = workSets
     .map((ws, i) => {
       const cls = ws.done ? 'is-done' : !info.isWarmup && i + 1 === info.workNumber ? 'is-current' : '';
-      return `<span class="set-dot ${cls}"></span>`;
+      return `<span class="inline-dot ${cls}"></span>`;
     })
     .join('');
 
-  const isCheckingIn = Boolean(checkinDraft.open && checkinDraft.stepId === step.id);
-  const draftReps = isCheckingIn ? checkinDraft.reps : curSet.targetReps;
-  const cueText = step.liveNote || step.cue;
+  const setBadgeHtml = info.isWarmup
+    ? `<span class="set-badge is-warmup">Warm-up${curSet.warmupTotal > 1 ? ` ${curSet.warmupIndex}/${curSet.warmupTotal}` : ''}</span>`
+    : `<span class="set-badge">Set ${info.workNumber} of ${info.totalWorkSets} <span class="inline-dots">${dotsHtml}</span></span>`;
 
-  const firstTimeHtml =
-    isNewStation && info.arrayIndex === 0 && !isCheckingIn
-      ? `
-      <div class="first-time-banner">
-        <div>
-          <strong>Before Set 1 · Machine Setup</strong>
-          <span>${esc(guide.pivot)}</span>
-        </div>
-        <button type="button" class="btn btn-secondary btn-sm" data-action="open-form-modal" data-tab="guide">Guide</button>
-      </div>
-    `
-      : '';
+  const repRangeStr = formatRepRange(curSet.repMin, curSet.repMax, curSet.targetReps);
+  const repChoices = buildRepChoices(curSet.repMin, curSet.repMax);
+
+  const nextSetAfterWarmup = info.isWarmup ? step.sets[info.arrayIndex + 1] : null;
+  const nextLoadAfterWarmup = nextSetAfterWarmup
+    ? formatLoad(machine, nextSetAfterWarmup.weightKg, unit).primary
+    : '';
 
   return `
     <section class="stage">
       <div class="stage-top">
-        <span class="step-crumb">Block ${stepNum}/${totalSteps} · Zone ${esc(step.zoneCode)}</span>
-        <button type="button" class="walk-pill ${step.walkMeters >= 5 ? 'is-accent' : ''}" data-action="open-floor-modal">
-          ${step.walkMeters > 0 ? `Walk ${step.walkMeters}m · Map` : `Zone ${esc(step.zoneCode)} · Map`}
-        </button>
+        <div class="top-progress-left">
+          <span class="step-crumb">${stepNum}/${totalSteps}</span>
+          ${setBadgeHtml}
+        </div>
+        ${locationBtnHtml}
       </div>
 
-      <div class="stage-body">
-        <div class="station-head-row">
-          <div>
-            <h2 class="station-title">${esc(machine.name)}</h2>
-            <p class="station-setup">${esc(step.setup)}</p>
+      <div class="stage-body" style="gap:10px;">
+        ${machineHeaderHtml}
+        ${visualCardHtml}
+
+        ${
+          step.liveNote
+            ? `<div class="cue-line is-adapted"><span>${esc(step.liveNote)}</span></div>`
+            : ''
+        }
+
+        <div class="rx-panel">
+          <div class="rx-load-row">
+            ${
+              machine.loadType !== 'bodyweight'
+                ? `<button type="button" class="load-step-btn" data-action="nudge-load" data-delta="${-stepInc}" aria-label="Decrease weight">−</button>`
+                : `<span style="width:48px;"></span>`
+            }
+            <div class="hero-center">
+              <span class="hero-value">${esc(load.primary)}</span>
+              <span class="hero-sub">${esc(load.sub)}</span>
+            </div>
+            ${
+              machine.loadType !== 'bodyweight'
+                ? `<button type="button" class="load-step-btn" data-action="nudge-load" data-delta="${stepInc}" aria-label="Increase weight">+</button>`
+                : `<span style="width:48px;"></span>`
+            }
           </div>
-          <button type="button" class="howto-pill ${isNewStation ? 'is-new' : ''}" data-action="open-form-modal" data-tab="guide">
-            How to Use
-          </button>
-        </div>
 
-        ${firstTimeHtml}
+          <div class="rx-divider"></div>
 
-        <div class="hero-panel">
-          ${
-            machine.loadType !== 'bodyweight'
-              ? `<button type="button" class="load-step-btn" data-action="nudge-load" data-delta="${-stepInc}" aria-label="Decrease weight">−</button>`
-              : `<span style="width:48px;"></span>`
-          }
-          <div class="hero-center">
-            <span class="hero-value">${esc(load.primary)}</span>
-            <span class="hero-sub">${
+          <div class="rx-rep-row">
+            ${
               info.isWarmup
-                ? `${esc(load.sub)} · 55% Warm-up Ramp`
-                : step.pct1RM > 0
-                ? `${esc(load.sub)} · ${Math.round(step.pct1RM * 100)}% 1RM`
-                : esc(load.sub)
-            }</span>
+                ? `
+                <span class="rx-rep-goal">Do ${curSet.targetReps} easy warm-up reps</span>
+                <span class="rx-rep-rule">Light speed — don't push hard</span>
+              `
+                : `
+                <span class="rx-rep-goal">Aim for ${esc(repRangeStr)} reps</span>
+                <span class="rx-rep-rule">Stop ~1–2 shy of failure (when speed slows)</span>
+              `
+            }
           </div>
-          ${
-            machine.loadType !== 'bodyweight'
-              ? `<button type="button" class="load-step-btn" data-action="nudge-load" data-delta="${stepInc}" aria-label="Increase weight">+</button>`
-              : `<span style="width:48px;"></span>`
-          }
-        </div>
-
-        <div class="specs-grid-3">
-          <div class="spec-tile">
-            <span class="spec-tile-label">Set</span>
-            <span class="spec-tile-val">${info.isWarmup ? 'Warmup' : `${info.workNumber} / ${info.totalWorkSets}`}</span>
-            <div class="set-dots">${dotsHtml}</div>
-          </div>
-          <div class="spec-tile">
-            <span class="spec-tile-label">Reps</span>
-            <span class="spec-tile-val">${curSet.targetReps}</span>
-            <span class="spec-tile-sub">${info.isWarmup ? 'Crisp speed' : `Stop @ RIR ${curSet.rir}`}</span>
-          </div>
-          <div class="spec-tile">
-            <span class="spec-tile-label">Rest</span>
-            <span class="spec-tile-val">${formatDurationShort(curSet.restSec)}</span>
-            <span class="spec-tile-sub">${state.settings.hrAutoExtendRest ? 'PCr + HR' : 'Fixed'}</span>
-          </div>
-        </div>
-
-        <div class="cue-line ${step.liveNote ? 'is-adapted' : ''}">
-          <span>${esc(cueText)}</span>
         </div>
 
         ${partnerHtml}
@@ -458,53 +464,33 @@ function renderActiveStepStage(state, session, timerSnap, wearableSnap, checkinD
 
       <div class="stage-bottom">
         ${
-          isCheckingIn
+          info.isWarmup
             ? `
-            <div class="checkin-card">
-              <div class="checkin-head">
-                <span>${info.isWarmup ? 'Warm-up reps' : `Set ${info.workNumber} · How did it feel?`}</span>
-                <button type="button" class="quiet-btn" style="padding:2px 6px;" data-action="cancel-checkin">Cancel</button>
-              </div>
-              <div class="checkin-rep-row">
-                <button type="button" class="load-step-btn" data-action="step-checkin-reps" data-delta="-1">−</button>
-                <div class="checkin-rep-val">
-                  ${draftReps}
-                  <small>reps done</small>
-                </div>
-                <button type="button" class="load-step-btn" data-action="step-checkin-reps" data-delta="1">+</button>
-              </div>
-              <div class="effort-grid">
-                <button type="button" class="effort-btn is-easy" data-action="submit-set" data-effort="easy">
-                  <span>Easy</span>
-                  <small>${info.isWarmup || info.isLastSetOfStep || machine.loadType === 'bodyweight' ? 'Fast' : `+${stepInc} ${unit} next`}</small>
-                </button>
-                <button type="button" class="effort-btn is-solid" data-action="submit-set" data-effort="solid">
-                  <span>Solid</span>
-                  <small>On target</small>
-                </button>
-                <button type="button" class="effort-btn is-hard" data-action="submit-set" data-effort="hard">
-                  <span>Hard</span>
-                  <small>${info.isWarmup || info.isLastSetOfStep || machine.loadType === 'bodyweight' ? '+Rest' : `−${stepInc} ${unit} next`}</small>
-                </button>
-              </div>
-              <button type="button" class="quiet-btn" style="align-self:center;" data-action="open-form-modal" data-tab="fix">
-                Wrong muscle / Form felt awkward?
-              </button>
-            </div>
+            <button type="button" class="btn btn-primary cta-giant" data-action="log-reps" data-reps="${curSet.targetReps}">
+              Warm-up Done${nextLoadAfterWarmup ? ` · Next ${esc(nextLoadAfterWarmup)}` : ''}
+            </button>
           `
             : `
-            <button type="button" id="done-set-btn" class="btn btn-primary cta-giant" data-action="open-checkin">
-              Done ${info.isWarmup ? 'Warm-up' : `Set ${info.workNumber}`} · ${curSet.targetReps} reps
-            </button>
-            <div class="quiet-actions">
-              <button type="button" class="quiet-btn" data-action="machine-busy">Busy</button>
-              <button type="button" class="quiet-btn" data-action="open-form-modal" data-tab="fix">Form / Issue</button>
-              <button type="button" class="quiet-btn" data-action="open-pain-modal">Pain</button>
-              <button type="button" class="quiet-btn" data-action="compress-time">−Time</button>
-              <button type="button" class="quiet-btn" data-action="skip-step">Skip</button>
+            <div class="rep-tap-block">
+              <span class="rep-tap-label">Tap reps completed</span>
+              <div class="rep-tap-grid">
+                ${repChoices
+                  .map(
+                    (c) => `
+                  <button type="button" class="rep-tap-btn ${c.zone === 'target' ? 'is-target' : ''}" data-action="log-reps" data-reps="${c.reps}">
+                    ${esc(c.label)}
+                  </button>`
+                  )
+                  .join('')}
+              </div>
             </div>
           `
         }
+        <div class="quiet-actions">
+          <button type="button" class="quiet-btn" data-action="machine-busy">Machine Busy</button>
+          <button type="button" class="quiet-btn" data-action="open-form-modal" data-tab="fix">Feels Wrong / Pain</button>
+          <button type="button" class="quiet-btn" data-action="skip-step">Skip</button>
+        </div>
       </div>
     </section>
   `;
@@ -516,7 +502,6 @@ function renderRestStage(state, session, timerSnap, wearableSnap) {
   const unit = state.settings.unit;
   const info = step?.type === 'lift' ? getCurrentSetInfo(step) : null;
 
-  // Check if we just transitioned to a brand-new station (0 sets done on current step)
   const isTransitionToNewStation =
     step &&
     ((step.type === 'lift' && step.sets.every((s) => !s.done)) || step.type === 'cardio');
@@ -532,15 +517,19 @@ function renderRestStage(state, session, timerSnap, wearableSnap) {
   const subStatus = timerSnap.hrReason
     ? timerSnap.hrReason
     : wearableSnap.bpm
-    ? `PCr floor + HR recovery (<${ceilingBpm} bpm)`
-    : 'ATP-PCr + CNS neural recovery';
+    ? `Recovering · Waiting for HR below ${ceilingBpm} bpm`
+    : 'Catch your breath before next set';
+
+  const nextRepRange = info
+    ? formatRepRange(info.set.repMin, info.set.repMax, info.set.targetReps)
+    : '';
 
   const nextLine =
     step?.type === 'lift' && info
-      ? `${machine.name} · ${info.isWarmup ? 'Warm-up' : `Set ${info.workNumber}/${info.totalWorkSets}`} · ${
-          formatLoad(machine, info.set.weightKg, unit).primary
-        } × ${info.set.targetReps}`
-      : `${machine?.name || 'Next Block'}`;
+      ? `${machine.name} (${machine.gymLabel || ''}) · ${
+          info.isWarmup ? 'Warm-up' : `Set ${info.workNumber} of ${info.totalWorkSets}`
+        } · ${formatLoad(machine, info.set.weightKg, unit).primary} × ${nextRepRange}`
+      : `${machine?.name || 'Next Step'}`;
 
   const transitMap =
     isTransitionToNewStation && step?.prevStationId
@@ -560,25 +549,31 @@ function renderRestStage(state, session, timerSnap, wearableSnap) {
   return `
     <section class="stage">
       <div class="stage-top">
-        <span class="step-crumb">Rest &amp; Recover</span>
+        <span class="step-crumb">Rest</span>
         ${
           isTransitionToNewStation && step.walkMeters > 0
-            ? `<span class="walk-pill is-accent">Walk ${step.walkMeters}m → Zone ${esc(step.zoneCode)}</span>`
-            : `<span class="walk-pill">Zone ${esc(step?.zoneCode || 'A')}</span>`
+            ? `<button type="button" class="walk-pill is-accent" data-action="open-floor-modal">Walk ${step.walkMeters}m · Map</button>`
+            : `<button type="button" class="walk-pill" data-action="open-floor-modal">${esc(getZoneInfo(machine?.zone).name)} · Map</button>`
         }
       </div>
 
       <div class="stage-body">
         <div class="hero-panel is-rest">
           <span class="hero-value">${timeStr}</span>
-          <span class="hero-sub">${esc(subStatus)}</span>
+          <span class="hero-sub" style="text-transform:none;letter-spacing:0;">${esc(subStatus)}</span>
           <div class="rest-progress-track">
             <div class="rest-progress-fill" style="width:${Math.round(timerSnap.progress * 100)}%;"></div>
           </div>
         </div>
 
-        <div class="cue-line ${step?.liveNote ? 'is-adapted' : ''}">
-          <span><strong>Next:</strong> ${esc(nextLine)}</span>
+        ${
+          step?.liveNote && !isTransitionToNewStation
+            ? `<div class="cue-line is-adapted"><span>${esc(step.liveNote)}</span></div>`
+            : ''
+        }
+
+        <div class="cue-line">
+          <span><strong>Up next:</strong> ${esc(nextLine)}</span>
         </div>
 
         ${transitMap}
@@ -589,15 +584,14 @@ function renderRestStage(state, session, timerSnap, wearableSnap) {
         <div class="rest-controls-row">
           <button type="button" class="btn btn-secondary" data-action="timer-adjust" data-delta="-15">-15s</button>
           <button type="button" class="btn btn-primary cta-giant" data-action="end-rest-now">
-            Ready · Start Set
+            Ready · Next Set
           </button>
           <button type="button" class="btn btn-secondary" data-action="timer-adjust" data-delta="30">+30s</button>
         </div>
         <div class="quiet-actions">
-          <button type="button" class="quiet-btn" data-action="open-form-modal" data-tab="guide">How to Use</button>
-          <button type="button" class="quiet-btn" data-action="open-form-modal" data-tab="fix">Form Check</button>
-          <button type="button" class="quiet-btn" data-action="machine-busy">Busy</button>
-          <button type="button" class="quiet-btn" data-action="open-pain-modal">Pain</button>
+          <button type="button" class="quiet-btn" data-action="open-form-modal" data-tab="guide">Machine Guide</button>
+          <button type="button" class="quiet-btn" data-action="machine-busy">Machine Busy</button>
+          <button type="button" class="quiet-btn" data-action="open-form-modal" data-tab="pain">Pain / Issue</button>
         </div>
       </div>
     </section>
@@ -617,14 +611,14 @@ function renderSummaryStage(state, session, wearableSnap) {
   return `
     <section class="stage">
       <div class="stage-top">
-        <span class="step-crumb">Session Complete</span>
-        <span class="chip is-prime">Week ${session.mesoWeek} · ${esc(session.mesoName)}</span>
+        <span class="step-crumb">Workout Complete</span>
+        <span class="chip is-prime">${esc(session.mesoName || `Week ${session.mesoWeek}`)}</span>
       </div>
 
       <div class="stage-body">
         <div>
           <h2 class="station-title">${esc(session.splitName)}</h2>
-          <p class="station-setup">${totalSets} working sets${
+          <p class="station-setup">${totalSets} working sets completed${
             wearableSnap.avgBpm ? ` · Avg ${wearableSnap.avgBpm} bpm · Peak ${wearableSnap.peakBpm} bpm` : ''
           }</p>
         </div>
@@ -635,36 +629,28 @@ function renderSummaryStage(state, session, wearableSnap) {
               const m = getMachineById(st.stationId);
               const done = st.sets.filter((s) => s.kind === 'work' && s.done);
               const topW = Math.max(...done.map((s) => s.weightKg || 0));
+              const repsList = done.map((s) => s.actualReps || s.targetReps).join(', ');
               return `
                 <div class="list-card">
                   <div>
                     <strong style="font-size:0.88rem;">${esc(m.name)}</strong>
-                    <div class="spec-tile-sub">${done.length} sets · Top ${esc(formatLoad(m, topW, unit).primary)}</div>
+                    <div class="spec-tile-sub">${esc(formatLoad(m, topW, unit).primary)} · Reps: ${esc(repsList)}</div>
                   </div>
                   ${
                     st.e1rmGain > 0
-                      ? `<span class="chip is-prime">+${st.e1rmGain} e1RM</span>`
-                      : `<span class="chip">Logged</span>`
+                      ? `<span class="chip is-prime">+Strength</span>`
+                      : `<span class="chip">Saved</span>`
                   }
                 </div>
               `;
             })
             .join('')}
         </div>
-
-        ${
-          session.adaptations.length
-            ? `
-            <div class="cue-line is-adapted">
-              <span>Coach adapted: ${esc(session.adaptations.slice(-2).join(' · '))}</span>
-            </div>`
-            : ''
-        }
       </div>
 
       <div class="stage-bottom">
         <button type="button" class="btn btn-success cta-giant" data-action="finish-and-save-session">
-          Save &amp; Advance Mesocycle
+          Save Workout &amp; Advance Plan
         </button>
       </div>
     </section>
@@ -678,6 +664,8 @@ function renderSummaryStage(state, session, wearableSnap) {
 export function renderGoalModalBody(state) {
   const a = state.athlete;
   const p = state.partner;
+  const curWeek = a.mesocycle?.week || 1;
+  const curMeso = getMesocyclePhase(curWeek);
 
   return `
     <form id="goal-form" class="sheet-section" style="gap:14px;">
@@ -696,15 +684,45 @@ export function renderGoalModalBody(state) {
         </div>
       </div>
 
-      <div class="sheet-section">
-        <span class="sheet-label">Priority Body Areas</span>
-        <div class="pill-row">
-          ${FOCUS_AREAS.map((f) => {
-            const on = (a.focusAreas || []).includes(f.id);
-            return `<button type="button" class="seg-btn ${on ? 'is-active' : ''}" data-action="toggle-focus-area" data-area="${f.id}">${esc(f.label)}</button>`;
-          }).join('')}
+      ${
+        a.goal === 'max_strength'
+          ? `
+        <div class="sheet-section">
+          <span class="sheet-label">8-Week Climber Block Phase</span>
+          <div class="option-grid-2">
+            <button type="button" class="option-card ${curMeso.block === 1 ? 'is-selected' : ''}" data-action="set-meso-block" data-block="1">
+              <strong>Block 1 · Base (W1–W4)</strong>
+              <span>8–10 reps · Build tendons &amp; upper pull</span>
+            </button>
+            <button type="button" class="option-card ${curMeso.block === 2 ? 'is-selected' : ''}" data-action="set-meso-block" data-block="2">
+              <strong>Block 2 · Max Neural (W5–W8)</strong>
+              <span>3–6 reps · Peak force, zero bulk</span>
+            </button>
+          </div>
+          <div class="seg-row" style="margin-top:4px;">
+            ${Object.values(MESOCYCLE_WEEKS)
+              .map(
+                (w) => `
+                <button type="button" class="seg-btn ${curWeek === w.week ? 'is-active' : ''}" data-action="set-meso-week" data-week="${w.week}">
+                  ${esc(w.name)}
+                </button>`
+              )
+              .join('')}
+          </div>
         </div>
-      </div>
+      `
+          : `
+        <div class="sheet-section">
+          <span class="sheet-label">Priority Body Areas</span>
+          <div class="pill-row">
+            ${FOCUS_AREAS.map((f) => {
+              const on = (a.focusAreas || []).includes(f.id);
+              return `<button type="button" class="seg-btn ${on ? 'is-active' : ''}" data-action="toggle-focus-area" data-area="${f.id}">${esc(f.label)}</button>`;
+            }).join('')}
+          </div>
+        </div>
+      `
+      }
 
       <div class="sheet-section">
         <span class="sheet-label">Cardiovascular Goal</span>
@@ -721,20 +739,10 @@ export function renderGoalModalBody(state) {
       </div>
 
       <div class="sheet-section">
-        <span class="sheet-label">4-Week Mesocycle &amp; Today's Readiness</span>
-        <div class="seg-row">
-          ${Object.values(MESOCYCLE_WEEKS)
-            .map(
-              (w) => `
-              <button type="button" class="seg-btn ${(a.mesocycle?.week || 1) === w.week ? 'is-active' : ''}" data-action="set-meso-week" data-week="${w.week}">
-                W${w.week} · ${esc(w.name)}
-              </button>`
-            )
-            .join('')}
-        </div>
-        <div class="field-grid-3" style="margin-top:4px;">
+        <span class="sheet-label">Weekly Cadence &amp; Recovery</span>
+        <div class="field-grid-3">
           <div class="field">
-            <label for="in-days">Days / wk</label>
+            <label for="in-days">Gym days/wk</label>
             <input id="in-days" name="daysPerWeek" class="field-input mono" type="number" min="2" max="6" value="${a.daysPerWeek || 3}" />
           </div>
           <div class="field">
@@ -750,7 +758,7 @@ export function renderGoalModalBody(state) {
 
       <div class="sheet-section">
         <div style="display:flex;align-items:center;justify-content:space-between;">
-          <span class="sheet-label">Partner Co-Location Mode</span>
+          <span class="sheet-label">Partner Workout Mode</span>
           <button type="button" class="seg-btn ${p.enabled ? 'is-active' : ''}" data-action="toggle-partner-mode">
             ${p.enabled ? 'Enabled' : 'Off'}
           </button>
@@ -781,11 +789,11 @@ export function renderGoalModalBody(state) {
               }).join('')}
             </div>
           `
-            : `<span class="spec-tile-sub">Pairs two athletes onto nearby machines with matched block time.</span>`
+            : `<span class="spec-tile-sub">Pairs two athletes onto nearby machines with matched block duration.</span>`
         }
       </div>
 
-      <button type="submit" class="btn btn-primary" style="width:100%;">Update Plan &amp; Rebuild Session</button>
+      <button type="submit" class="btn btn-primary" style="width:100%;">Save &amp; Update Workout</button>
     </form>
   `;
 }
@@ -799,11 +807,11 @@ export function renderFloorModalBody(state, session, editPins = false) {
     <div class="sheet-section">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
         <span class="spec-tile-sub">${
-          editPins ? 'Drag any pin to match the exact gym floor.' : 'Zones A–E · Active route highlighted'
+          editPins ? 'Drag any pin to match the exact gym layout.' : 'Manegg Motion · Highlighted workout route'
         }</span>
         <div style="display:flex;gap:6px;">
           <button type="button" class="btn btn-secondary btn-sm" data-action="toggle-floor-edit">
-            ${editPins ? 'Done Editing' : 'Calibrate Pins'}
+            ${editPins ? 'Done' : 'Move Pins'}
           </button>
           ${
             Object.keys(state.floorOverrides || {}).length
@@ -826,10 +834,9 @@ export function renderFloorModalBody(state, session, editPins = false) {
       </div>
 
       <div class="pill-row">
-        <span class="chip">🟠 Active</span>
+        <span class="chip">🟠 Current</span>
         ${state.partner?.enabled ? `<span class="chip">🔵 Partner</span>` : ''}
         <span class="chip">🟢 Done</span>
-        <span class="chip">${GYM_MACHINES.length} Stations Mapped</span>
       </div>
     </div>
   `;
@@ -842,19 +849,19 @@ export function renderPainModalBody(state) {
 
   return `
     <div class="sheet-section">
-      <span class="spec-tile-sub">Tap any area with discomfort — Coach immediately swaps high-stress lifts for joint-safe alternatives.</span>
+      <span class="spec-tile-sub">Tap any area that hurts or feels strained — the Coach swaps out high-stress exercises for 7 days.</span>
       <div class="option-grid-2">
         ${PAIN_LOCATIONS.map(
           (loc) => `
           <button type="button" class="option-card ${activeFlags.includes(loc.id) ? 'is-selected' : ''}" data-action="report-pain" data-joint="${loc.id}">
             <strong>${esc(loc.label)}</strong>
-            <span>${activeFlags.includes(loc.id) ? 'Protected (7d)' : 'Swap high-stress stations'}</span>
+            <span>${activeFlags.includes(loc.id) ? 'Protected (7 days)' : 'Swap stressful exercises'}</span>
           </button>`
         ).join('')}
       </div>
       ${
         activeFlags.length
-          ? `<button type="button" class="btn btn-secondary btn-sm" data-action="clear-pain-flags">Clear Protected Joints</button>`
+          ? `<button type="button" class="btn btn-secondary btn-sm" data-action="clear-pain-flags">Clear Protected Areas</button>`
           : ''
       }
     </div>
@@ -867,8 +874,11 @@ export function renderPlanModalBody(state, session) {
   return `
     <div class="sheet-section">
       <div style="display:flex;align-items:center;justify-content:space-between;">
-        <span class="sheet-label">Today's Coach Queue</span>
-        <button type="button" class="btn btn-secondary btn-sm" data-action="regenerate-session">Rebuild Today</button>
+        <span class="sheet-label">Today's Exercises</span>
+        <div style="display:flex;gap:6px;">
+          <button type="button" class="btn btn-secondary btn-sm" data-action="compress-time">Short on Time</button>
+          <button type="button" class="btn btn-secondary btn-sm" data-action="regenerate-session">Reset Today</button>
+        </div>
       </div>
 
       ${(session?.steps || [])
@@ -880,15 +890,16 @@ export function renderPlanModalBody(state, session) {
             spec = `${Math.round(st.durationSec / 60)} min`;
           } else {
             const work = st.sets.filter((s) => s.kind === 'work');
-            spec = `${work.length}×${work[0]?.targetReps} @ ${formatLoad(m, work[0]?.weightKg || 0, unit).primary}`;
+            const fw = work[0] || {};
+            spec = `${work.length} × ${formatRepRange(fw.repMin, fw.repMax, fw.targetReps)} @ ${formatLoad(m, fw.weightKg || 0, unit).primary}`;
           }
           return `
             <button type="button" class="list-card ${isCur ? 'is-current' : ''}" style="width:100%;text-align:left;" data-action="jump-step" data-index="${idx}">
               <div>
                 <strong style="font-size:0.86rem;">${idx + 1}. ${esc(m?.name || '')}</strong>
-                <div class="spec-tile-sub">Zone ${esc(st.zoneCode)} · ${esc(spec)}</div>
+                <div class="spec-tile-sub">${esc(m?.gymLabel || '')} · ${esc(spec)}</div>
               </div>
-              <span class="chip ${st.done ? 'is-prime' : ''}">${st.done ? 'Done' : isCur ? 'Now' : 'Jump'}</span>
+              <span class="chip ${st.done ? 'is-prime' : ''}">${st.done ? 'Done' : isCur ? 'Now' : 'Go'}</span>
             </button>
           `;
         })
@@ -899,7 +910,7 @@ export function renderPlanModalBody(state, session) {
       state.history.length
         ? `
       <div class="sheet-section">
-        <span class="sheet-label">Recent Sessions (Feeds Next Weights)</span>
+        <span class="sheet-label">Recent Workouts</span>
         ${state.history
           .slice(0, 4)
           .map(
@@ -907,7 +918,7 @@ export function renderPlanModalBody(state, session) {
             <div class="list-card">
               <div>
                 <strong style="font-size:0.84rem;">${esc(h.splitName)}</strong>
-                <div class="spec-tile-sub">${formatRelativeDays(h.date)} · W${h.mesoWeek} ${esc(h.mesoName)} · ${h.totalSets} sets · ${h.durationMin}m${
+                <div class="spec-tile-sub">${formatRelativeDays(h.date)} · ${esc(h.mesoName || `W${h.mesoWeek}`)} · ${h.totalSets} sets · ${h.durationMin}m${
               h.avgBpm ? ` · ♥ ${h.avgBpm}` : ''
             }</div>
               </div>
@@ -923,7 +934,7 @@ export function renderPlanModalBody(state, session) {
       <span class="sheet-label">Preferences</span>
       <div class="pill-row">
         <button type="button" class="seg-btn ${state.settings.hrAutoExtendRest ? 'is-active' : ''}" data-action="toggle-setting" data-key="hrAutoExtendRest">
-          HR Rest Brake: ${state.settings.hrAutoExtendRest ? 'On' : 'Off'}
+          Smart HR Rest: ${state.settings.hrAutoExtendRest ? 'On' : 'Off'}
         </button>
         <button type="button" class="seg-btn ${state.settings.sound ? 'is-active' : ''}" data-action="toggle-setting" data-key="sound">
           Sound: ${state.settings.sound ? 'On' : 'Off'}
@@ -943,13 +954,13 @@ export function renderPlanModalBody(state, session) {
 export function renderWearableModalBody(state, snap) {
   const isLive = snap.status === 'connected' || snap.status === 'simulating';
   const isConnecting = snap.status === 'connecting';
-  const deviceType = state.wearable?.deviceType || 'garmin_venu_4s';
-  const preset = WEARABLE_PRESETS[deviceType] || WEARABLE_PRESETS.garmin_venu_4s;
+  const deviceType = state.wearable?.deviceType || 'fitbit_air';
+  const preset = WEARABLE_PRESETS[deviceType] || WEARABLE_PRESETS.fitbit_air;
   const gh = state.wearable?.googleHealthSummary;
 
   const stats = [
     `${snap.bpm ?? '--'} bpm`,
-    `Z${snap.zone.decimal || 0} (${snap.zone.label})`,
+    `${snap.zone.label}`,
     `Avg ${snap.avgBpm ?? '--'}`,
     `Peak ${snap.peakBpm ?? '--'}`,
   ];
@@ -957,18 +968,18 @@ export function renderWearableModalBody(state, snap) {
   if (snap.batteryPct !== null && snap.batteryPct !== undefined) stats.push(`${snap.batteryPct}%`);
 
   const statusSub = isConnecting
-    ? snap.connectingStage || 'Connecting BLE Heart Rate (0x180D)…'
+    ? snap.connectingStage || 'Connecting Bluetooth Heart Rate…'
     : isLive
     ? snap.bpm
       ? stats.join(' · ')
       : 'Connected · Acquiring wrist pulse…'
-    : 'BLE Heart Rate (0x180D)';
+    : 'Live Bluetooth Heart Rate';
 
   return `
     <div class="sheet-section" style="gap:12px;">
       <div class="option-grid-2">
-        <button type="button" class="seg-btn ${deviceType === 'garmin_venu_4s' ? 'is-active' : ''}" data-action="set-wearable-device" data-device="garmin_venu_4s">Garmin Venu 4s</button>
         <button type="button" class="seg-btn ${deviceType === 'fitbit_air' ? 'is-active' : ''}" data-action="set-wearable-device" data-device="fitbit_air">Fitbit Air</button>
+        <button type="button" class="seg-btn ${deviceType === 'garmin_venu_4s' ? 'is-active' : ''}" data-action="set-wearable-device" data-device="garmin_venu_4s">Garmin Venu 4s</button>
       </div>
 
       <div class="list-card">
@@ -981,7 +992,7 @@ export function renderWearableModalBody(state, snap) {
                 ? esc(snap.deviceName || `${preset.label} (Demo)`)
                 : isConnecting
                 ? `Pairing ${esc(snap.deviceName || preset.shortLabel)}…`
-                : `${esc(preset.label)} · Off`
+                : `${esc(preset.label)} · Not Connected`
             }
           </strong>
           <div class="spec-tile-sub">${esc(statusSub)}</div>
@@ -1024,7 +1035,7 @@ export function renderWearableModalBody(state, snap) {
       <form id="wearable-hr-form" class="sheet-section">
         <div class="field-grid-2">
           <div class="field">
-            <label for="w-rhr">Baseline Resting HR</label>
+            <label for="w-rhr">Resting HR</label>
             <input id="w-rhr" name="restingHr" class="field-input mono" type="number" min="35" max="110" value="${state.athlete.baselineRhr || 58}" />
           </div>
           <div class="field">
@@ -1032,7 +1043,7 @@ export function renderWearableModalBody(state, snap) {
             <input id="w-mhr" name="maxHr" class="field-input mono" type="number" min="120" max="220" value="${state.athlete.maxHr || 188}" />
           </div>
         </div>
-        <button type="submit" class="btn btn-secondary btn-sm">Save HR Profile</button>
+        <button type="submit" class="btn btn-secondary btn-sm">Save HR Settings</button>
       </form>
 
       ${
@@ -1052,12 +1063,16 @@ export function renderWearableModalBody(state, snap) {
   `;
 }
 
+/**
+ * Unified Machine Guide + Form Issue + Joint Pain Modal
+ * Eliminates competing "How to Use", "Form / Issue", and "Pain" buttons!
+ */
 export function renderFormModalBody(state, session, formUi = {}) {
   const step = getActiveStep(session);
   const machineId = formUi.machineId || step?.stationId || 'm_ab_crunch';
   const machine = getMachineById(machineId) || GYM_MACHINES[0];
   const guide = getMachineGuide(machine.id);
-  const tab = formUi.tab || 'guide'; // 'guide' | 'fix'
+  const tab = formUi.tab || 'guide'; // 'guide' | 'fix' | 'pain'
   const unit = state.settings.unit;
   const inc = machine.stepKg || 2.5;
   const pinnedCue = state.athlete.formNotes?.[machine.id]?.pinnedCue || '';
@@ -1065,42 +1080,55 @@ export function renderFormModalBody(state, session, formUi = {}) {
   const diagnosis = formUi.query ? diagnoseMachineIssue(machine, formUi.query) : null;
   const swapMachine = diagnosis?.swapId ? getMachineById(diagnosis.swapId) : null;
 
-  const stationPickerHtml = `
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-      <select id="form-station-select" class="field-input" style="height:36px;font-size:0.82rem;">
-        ${GYM_MACHINES.map(
-          (m) => `<option value="${m.id}" ${m.id === machine.id ? 'selected' : ''}>${esc(m.name)}</option>`
-        ).join('')}
-      </select>
-      <div class="seg-row" style="flex-shrink:0;">
-        <button type="button" class="seg-btn ${tab === 'guide' ? 'is-active' : ''}" data-action="set-form-tab" data-tab="guide">How to Use</button>
-        <button type="button" class="seg-btn ${tab === 'fix' ? 'is-active' : ''}" data-action="set-form-tab" data-tab="fix">Form Check</button>
-      </div>
+  const tabsHtml = `
+    <div class="seg-row">
+      <button type="button" class="seg-btn ${tab === 'guide' ? 'is-active' : ''}" data-action="set-form-tab" data-tab="guide">How to Use</button>
+      <button type="button" class="seg-btn ${tab === 'fix' ? 'is-active' : ''}" data-action="set-form-tab" data-tab="fix">Wrong Muscle / Form</button>
+      <button type="button" class="seg-btn ${tab === 'pain' ? 'is-active' : ''}" data-action="set-form-tab" data-tab="pain">Joint Pain</button>
     </div>
+  `;
+
+  if (tab === 'pain') {
+    return `
+      <div class="sheet-section" style="gap:12px;">
+        ${tabsHtml}
+        ${renderPainModalBody(state)}
+      </div>
+    `;
+  }
+
+  const stationSelectHtml = `
+    <select id="form-station-select" class="field-input" style="height:38px;font-size:0.83rem;">
+      ${GYM_MACHINES.map(
+        (m) =>
+          `<option value="${m.id}" ${m.id === machine.id ? 'selected' : ''}>${esc(m.name)} (${esc(m.gymLabel || '')})</option>`
+      ).join('')}
+    </select>
   `;
 
   if (tab === 'guide') {
     return `
       <div class="sheet-section" style="gap:12px;">
-        ${stationPickerHtml}
+        ${tabsHtml}
+        ${stationSelectHtml}
 
         <div class="form-diagram-box">
           ${renderFormDiagramSvg(machine)}
         </div>
 
         <div class="cue-line is-adapted">
-          <span><strong>Pivot:</strong> ${esc(guide.pivot)}</span>
+          <span><strong>Seat &amp; Pivot:</strong> ${esc(guide.pivot)}</span>
         </div>
 
         <div class="list-card" style="flex-direction:column;align-items:flex-start;gap:6px;">
-          <span class="sheet-label">Execution Checklist</span>
+          <span class="sheet-label">Step-by-Step Setup</span>
           <ol class="setup-steps">
             ${guide.steps.map((s) => `<li>${esc(s)}</li>`).join('')}
           </ol>
         </div>
 
         <div class="feel-avoid-grid">
-          <div class="feel-box">Feel: ${esc(guide.feel)}</div>
+          <div class="feel-box">Should feel: ${esc(guide.feel)}</div>
           <div class="avoid-box">Avoid: ${esc(guide.avoid)}</div>
         </div>
 
@@ -1109,7 +1137,7 @@ export function renderFormModalBody(state, session, formUi = {}) {
             ? `
             <div class="list-card">
               <div>
-                <span class="sheet-label">Your Pinned Cue</span>
+                <span class="sheet-label">Your Saved Reminder</span>
                 <div style="font-size:0.81rem;font-weight:700;">${esc(pinnedCue)}</div>
               </div>
               <button type="button" class="btn btn-secondary btn-sm" data-action="clear-pinned-cue" data-machine-id="${machine.id}">Clear</button>
@@ -1118,20 +1146,20 @@ export function renderFormModalBody(state, session, formUi = {}) {
         }
 
         <div class="option-grid-2">
-          <button type="button" class="btn btn-secondary" data-action="set-form-tab" data-tab="fix">Feels Off? Troubleshoot</button>
-          <button type="button" class="btn btn-primary" data-action="confirm-guide-seen" data-machine-id="${machine.id}">Got It · Ready</button>
+          <button type="button" class="btn btn-secondary" data-action="set-form-tab" data-tab="fix">Feels Awkward?</button>
+          <button type="button" class="btn btn-primary" data-action="confirm-guide-seen" data-machine-id="${machine.id}">Got It</button>
         </div>
       </div>
     `;
   }
 
-  // Troubleshoot / Form Check Tab
   return `
     <div class="sheet-section" style="gap:12px;">
-      ${stationPickerHtml}
+      ${tabsHtml}
+      ${stationSelectHtml}
 
       <div class="sheet-section">
-        <span class="sheet-label">Common Issues on ${esc(machine.shortName)}</span>
+        <span class="sheet-label">What feels off on ${esc(machine.name)}?</span>
         <div class="pill-row">
           ${guide.issues
             .map(
@@ -1145,10 +1173,10 @@ export function renderFormModalBody(state, session, formUi = {}) {
       </div>
 
       <form id="form-issue-form" class="sheet-section">
-        <span class="sheet-label">Or Describe What Feels Off</span>
+        <span class="sheet-label">Or describe it in your own words</span>
         <div style="display:flex;gap:8px;">
           <input id="form-issue-input" name="issueText" class="field-input" type="text" placeholder="e.g. puts too much weight on lats instead..." value="${esc(formUi.rawText || '')}" />
-          <button type="submit" class="btn btn-primary btn-sm">Analyze</button>
+          <button type="submit" class="btn btn-primary btn-sm">Fix</button>
         </div>
       </form>
 
@@ -1157,12 +1185,12 @@ export function renderFormModalBody(state, session, formUi = {}) {
           ? `
           <div class="diagnosis-card">
             <div>
-              <span class="sheet-label" style="color:var(--accent);">Why It Happens</span>
+              <span class="sheet-label" style="color:var(--accent);">Why That Happens</span>
               <p class="diagnosis-cause" style="margin:4px 0 0;">${esc(diagnosis.cause)}</p>
             </div>
 
             <div>
-              <span class="sheet-label">Fix Right Now</span>
+              <span class="sheet-label">How to Fix It Now</span>
               <ol class="setup-steps" style="margin-top:4px;">
                 ${diagnosis.fixes.map((f) => `<li>${esc(f)}</li>`).join('')}
               </ol>
@@ -1173,15 +1201,15 @@ export function renderFormModalBody(state, session, formUi = {}) {
                 machine.loadType !== 'bodyweight' && machine.loadType !== 'cardio' && diagnosis.suggestDropLoad
                   ? `
                   <button type="button" class="btn btn-primary" data-action="apply-form-fix" data-cue="${esc(diagnosis.pinCue)}" data-drop="true">
-                    Pin Cue &amp; −${inc} ${unit} Today
+                    Save Reminder &amp; Lower −${inc} ${unit}
                   </button>
                   <button type="button" class="btn btn-secondary btn-sm" data-action="apply-form-fix" data-cue="${esc(diagnosis.pinCue)}" data-drop="false">
-                    Pin Cue Only (Keep Weight)
+                    Save Reminder Only
                   </button>
                 `
                   : `
                   <button type="button" class="btn btn-primary" data-action="apply-form-fix" data-cue="${esc(diagnosis.pinCue)}" data-drop="false">
-                    Pin Cue to ${esc(machine.shortName)}
+                    Save Reminder to ${esc(machine.shortName)}
                   </button>
                 `
               }
@@ -1189,7 +1217,7 @@ export function renderFormModalBody(state, session, formUi = {}) {
                 swapMachine
                   ? `
                   <button type="button" class="btn btn-secondary btn-sm" data-action="apply-form-swap" data-swap-id="${swapMachine.id}">
-                    Swap to ${esc(swapMachine.name)} &amp; Prefer Next Time
+                    Swap to ${esc(swapMachine.name)} Instead
                   </button>
                 `
                   : ''
@@ -1197,7 +1225,7 @@ export function renderFormModalBody(state, session, formUi = {}) {
             </div>
           </div>
         `
-          : `<div class="cue-line"><span>Tap a symptom above or type what feels wrong — Coach will adjust setup, load, or swap the machine.</span></div>`
+          : `<div class="cue-line"><span>Tap an issue above or type what feels wrong — Coach will adjust setup, lower the pin, or swap the exercise.</span></div>`
       }
     </div>
   `;

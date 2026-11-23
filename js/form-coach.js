@@ -756,95 +756,218 @@ export function diagnoseMachineIssue(machine, input) {
 }
 
 /**
- * Schematic biomechanical SVG showing body posture, joint pivot dot (orange), and force arrow (green).
+ * Distinct schematic machine + posture + motion-arrow SVG for every station,
+ * designed to make each physical machine immediately recognizable on the gym floor.
  */
 export function renderFormDiagramSvg(machine) {
-  const mov = machine.movement;
-
-  // Compact 220x110 schematic vector diagrams grouped by biomechanics
+  const id = machine?.id || '';
   let art = '';
-  if (mov === 'core') {
-    if (machine.id === 'm_abs_mat') {
+
+  switch (id) {
+    case 'm_leg_press':
       art = `
-        <line x1="20" y1="88" x2="200" y2="88" stroke="var(--border-strong)" stroke-width="3"/>
-        <path d="M55 82 Q105 85 135 82 L178 52" fill="none" stroke="var(--text)" stroke-width="5" stroke-linecap="round"/>
-        <circle cx="44" cy="76" r="8" fill="var(--text)"/>
-        <circle cx="110" cy="83" r="5" fill="var(--accent)"/>
-        <path d="M110 68 L110 80" stroke="var(--success)" stroke-width="2.5" marker-end="url(#arr)"/>
-        <text x="112" y="62" class="fd-lbl">Glue lumbar</text>
+        <path d="M24 84 L62 90 M62 90 L46 52" stroke="var(--border-strong)" stroke-width="5" stroke-linecap="round"/>
+        <line x1="126" y1="26" x2="148" y2="76" stroke="var(--text-muted)" stroke-width="6" stroke-linecap="round"/>
+        <line x1="138" y1="52" x2="168" y2="40" stroke="var(--border-strong)" stroke-width="4"/>
+        <path d="M54 58 L64 84 L96 58 L134 54" fill="none" stroke="var(--text)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="49" cy="44" r="7.5" fill="var(--text)"/>
+        <circle cx="96" cy="58" r="5" fill="var(--accent)"/>
+        <path d="M104 38 L128 28 M122 25 L129 28 L125 35" fill="none" stroke="var(--success)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
       `;
-    } else {
+      break;
+
+    case 'm_leg_ext':
       art = `
-        <path d="M75 95 L75 65 L105 65" fill="none" stroke="var(--border-strong)" stroke-width="4"/>
-        <path d="M98 92 L98 66 Q98 44 114 38" fill="none" stroke="var(--text)" stroke-width="5" stroke-linecap="round"/>
-        <circle cx="118" cy="26" r="8" fill="var(--text)"/>
-        <circle cx="98" cy="52" r="5.5" fill="var(--accent)"/>
-        <path d="M128 36 Q138 52 122 64" fill="none" stroke="var(--success)" stroke-width="2.5"/>
-        <text x="136" y="52" class="fd-lbl">Curl ribs (no arm pull)</text>
+        <path d="M52 28 L52 68 L96 68 L96 94 M62 68 L62 94" fill="none" stroke="var(--border-strong)" stroke-width="4.5" stroke-linecap="round"/>
+        <path d="M62 34 L62 64 L100 64 L138 46" fill="none" stroke="var(--text)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="62" cy="21" r="7.5" fill="var(--text)"/>
+        <circle cx="100" cy="64" r="5" fill="var(--accent)"/>
+        <circle cx="136" cy="43" r="4.5" fill="var(--warning)"/>
+        <path d="M126 74 Q144 62 144 42 M139 46 L144 40 L149 46" fill="none" stroke="var(--success)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
       `;
-    }
-  } else if (mov === 'vert_pull') {
-    art = `
-      <line x1="110" y1="10" x2="110" y2="32" stroke="var(--border-strong)" stroke-width="3"/>
-      <line x1="78" y1="30" x2="142" y2="30" stroke="var(--text-secondary)" stroke-width="4" stroke-linecap="round"/>
-      <path d="M84 30 L96 52 L110 86 M136 30 L124 52 L110 86" fill="none" stroke="var(--text)" stroke-width="4.5" stroke-linecap="round"/>
-      <circle cx="110" cy="44" r="7.5" fill="var(--text)"/>
-      <circle cx="98" cy="52" r="5" fill="var(--accent)"/>
-      <circle cx="122" cy="52" r="5" fill="var(--accent)"/>
-      <path d="M72 44 L72 68" stroke="var(--success)" stroke-width="2.5"/>
-      <text x="142" y="64" class="fd-lbl">Elbows down</text>
-    `;
-  } else if (mov === 'horiz_pull' || mov === 'scapular') {
-    art = `
-      <line x1="40" y1="54" x2="96" y2="54" stroke="var(--border-strong)" stroke-width="3" stroke-dasharray="4 3"/>
-      <path d="M122 92 L122 46 M96 54 L132 58" fill="none" stroke="var(--text)" stroke-width="5" stroke-linecap="round"/>
-      <circle cx="122" cy="33" r="8" fill="var(--text)"/>
-      <circle cx="122" cy="52" r="5" fill="var(--accent)"/>
-      <path d="M88 68 L134 68" stroke="var(--success)" stroke-width="2.5"/>
-      <text x="138" y="56" class="fd-lbl">Squeeze blades</text>
-    `;
-  } else if (mov === 'squat') {
-    art = `
-      <line x1="48" y1="86" x2="92" y2="92" stroke="var(--border-strong)" stroke-width="5" stroke-linecap="round"/>
-      <line x1="148" y1="30" x2="168" y2="74" stroke="var(--border-strong)" stroke-width="5" stroke-linecap="round"/>
-      <path d="M62 82 L88 88 L116 54 L154 68" fill="none" stroke="var(--text)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
-      <circle cx="54" cy="70" r="7.5" fill="var(--text)"/>
-      <circle cx="88" cy="88" r="5" fill="var(--accent)"/>
-      <circle cx="116" cy="54" r="5" fill="var(--accent)"/>
-      <path d="M124 44 L152 32" stroke="var(--success)" stroke-width="2.5"/>
-      <text x="95" y="26" class="fd-lbl">Drive full foot</text>
-    `;
-  } else if (mov === 'knee_ext' || mov === 'knee_flex') {
-    art = `
-      <path d="M72 34 L72 68 L116 68" fill="none" stroke="var(--border-strong)" stroke-width="5" stroke-linecap="round"/>
-      <path d="M78 40 L78 66 L118 66 L${mov === 'knee_ext' ? '156 54' : '112 94'}" fill="none" stroke="var(--text)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
-      <circle cx="78" cy="27" r="7.5" fill="var(--text)"/>
-      <circle cx="118" cy="66" r="5.5" fill="var(--accent)"/>
-      <text x="128" y="42" class="fd-lbl">Match knee to pivot</text>
-    `;
-  } else if (mov === 'horiz_push' || mov === 'pec_fly') {
-    art = `
-      <line x1="58" y1="86" x2="108" y2="48" stroke="var(--border-strong)" stroke-width="5" stroke-linecap="round"/>
-      <path d="M72 76 L104 52 L142 32" fill="none" stroke="var(--text)" stroke-width="5" stroke-linecap="round"/>
-      <circle cx="110" cy="40" r="7.5" fill="var(--text)"/>
-      <circle cx="102" cy="53" r="5" fill="var(--accent)"/>
-      <path d="M118 56 L148 38" stroke="var(--success)" stroke-width="2.5"/>
-      <text x="126" y="76" class="fd-lbl">Blades pinned · 45° elbow</text>
-    `;
-  } else {
-    art = `
-      <path d="M90 90 L106 58 L112 34" fill="none" stroke="var(--text)" stroke-width="5" stroke-linecap="round"/>
-      <circle cx="114" cy="22" r="7.5" fill="var(--text)"/>
-      <circle cx="106" cy="58" r="5.5" fill="var(--accent)"/>
-      <text x="126" y="58" class="fd-lbl">Tall neutral posture</text>
-    `;
+      break;
+
+    case 'm_leg_curl':
+      art = `
+        <path d="M52 28 L52 66 L96 66 L96 94 M62 66 L62 94" fill="none" stroke="var(--border-strong)" stroke-width="4.5" stroke-linecap="round"/>
+        <line x1="78" y1="56" x2="98" y2="56" stroke="var(--warning)" stroke-width="5" stroke-linecap="round"/>
+        <path d="M62 34 L62 63 L102 63 L92 92" fill="none" stroke="var(--text)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="62" cy="21" r="7.5" fill="var(--text)"/>
+        <circle cx="102" cy="63" r="5" fill="var(--accent)"/>
+        <circle cx="96" cy="89" r="4.5" fill="var(--warning)"/>
+        <path d="M128 68 Q122 88 102 92 M107 87 L100 92 L107 96" fill="none" stroke="var(--success)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+      `;
+      break;
+
+    case 'm_hip_thrust':
+      art = `
+        <rect x="28" y="56" width="28" height="32" rx="5" fill="none" stroke="var(--border-strong)" stroke-width="4"/>
+        <line x1="20" y1="88" x2="156" y2="88" stroke="var(--border-strong)" stroke-width="3"/>
+        <path d="M48 56 L92 56 L124 56 L124 88" fill="none" stroke="var(--text)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="38" cy="48" r="7.5" fill="var(--text)"/>
+        <rect x="85" y="48" width="14" height="10" rx="3" fill="var(--accent)"/>
+        <path d="M92 42 L92 22 M86 28 L92 21 L98 28" fill="none" stroke="var(--success)" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+      `;
+      break;
+
+    case 'm_calf':
+      art = `
+        <path d="M44 66 L86 66 L86 92 M116 88 L144 88" fill="none" stroke="var(--border-strong)" stroke-width="4.5" stroke-linecap="round"/>
+        <line x1="88" y1="54" x2="108" y2="54" stroke="var(--warning)" stroke-width="5" stroke-linecap="round"/>
+        <path d="M56 32 L56 62 L102 62 L122 86" fill="none" stroke="var(--text)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="56" cy="20" r="7.5" fill="var(--text)"/>
+        <circle cx="118" cy="82" r="4.5" fill="var(--accent)"/>
+        <path d="M138 80 L138 56 M133 62 L138 55 L143 62" fill="none" stroke="var(--success)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+      `;
+      break;
+
+    case 'm_lat_pull':
+      art = `
+        <path d="M88 8 L88 26 M58 26 L118 26" fill="none" stroke="var(--text-muted)" stroke-width="4" stroke-linecap="round"/>
+        <line x1="72" y1="68" x2="104" y2="68" stroke="var(--warning)" stroke-width="4.5" stroke-linecap="round"/>
+        <path d="M64 26 L76 48 L88 86 M112 26 L100 48 L88 86" fill="none" stroke="var(--text)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="88" cy="40" r="7.5" fill="var(--text)"/>
+        <circle cx="76" cy="48" r="4.5" fill="var(--accent)"/>
+        <circle cx="100" cy="48" r="4.5" fill="var(--accent)"/>
+        <path d="M134 30 L134 58 M129 52 L134 59 L139 52" fill="none" stroke="var(--success)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+      `;
+      break;
+
+    case 'm_pullup':
+      art = `
+        <path d="M48 16 L128 16 M56 16 L56 92 M120 16 L120 92" fill="none" stroke="var(--border-strong)" stroke-width="4" stroke-linecap="round"/>
+        <path d="M72 16 L78 38 L88 68 L88 88 M104 16 L98 38 L88 68" fill="none" stroke="var(--text)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="88" cy="30" r="7.5" fill="var(--text)"/>
+        <path d="M138 64 L138 34 M133 40 L138 33 L143 40" fill="none" stroke="var(--success)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+      `;
+      break;
+
+    case 'm_low_row':
+      art = `
+        <rect x="30" y="24" width="16" height="66" rx="3" fill="none" stroke="var(--border-strong)" stroke-width="3.5"/>
+        <line x1="46" y1="50" x2="94" y2="50" stroke="var(--text-muted)" stroke-width="2.5" stroke-dasharray="4 3"/>
+        <line x1="94" y1="42" x2="94" y2="62" stroke="var(--warning)" stroke-width="5" stroke-linecap="round"/>
+        <path d="M106 36 L106 70 L78 88 M94 50 L118 54" fill="none" stroke="var(--text)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="106" cy="22" r="7.5" fill="var(--text)"/>
+        <circle cx="116" cy="54" r="4.5" fill="var(--accent)"/>
+        <path d="M122 38 L144 38 M138 33 L145 38 L138 43" fill="none" stroke="var(--success)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+      `;
+      break;
+
+    case 'm_cable_pull':
+      art = `
+        <line x1="34" y1="14" x2="34" y2="92" stroke="var(--border-strong)" stroke-width="5" stroke-linecap="round"/>
+        <circle cx="38" cy="26" r="4.5" fill="var(--warning)"/>
+        <line x1="42" y1="26" x2="96" y2="30" stroke="var(--text-muted)" stroke-width="2.5" stroke-dasharray="4 3"/>
+        <path d="M114 34 L114 66 L100 90 M114 66 L128 90 M96 30 L122 36" fill="none" stroke="var(--text)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="114" cy="22" r="7.5" fill="var(--text)"/>
+        <circle cx="122" cy="36" r="4.5" fill="var(--accent)"/>
+        <path d="M90 44 L112 44 M106 39 L113 44 L106 49" fill="none" stroke="var(--success)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+      `;
+      break;
+
+    case 'm_smith_incline':
+      art = `
+        <line x1="92" y1="12" x2="108" y2="92" stroke="var(--border-strong)" stroke-width="4" stroke-dasharray="5 3"/>
+        <line x1="52" y1="84" x2="104" y2="50" stroke="var(--border-strong)" stroke-width="5" stroke-linecap="round"/>
+        <path d="M64 76 L96 54 L126 78 M92 56 L98 32" fill="none" stroke="var(--text)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="104" cy="42" r="7.5" fill="var(--text)"/>
+        <circle cx="98" cy="30" r="5" fill="var(--accent)"/>
+        <path d="M114 40 L126 18 M120 21 L126 17 L129 24" fill="none" stroke="var(--success)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+      `;
+      break;
+
+    case 'm_chest_press':
+      art = `
+        <path d="M52 24 L52 70 L88 70 L88 92" fill="none" stroke="var(--border-strong)" stroke-width="4.5" stroke-linecap="round"/>
+        <path d="M64 34 L64 66 L96 66 L108 90 M64 44 L108 44" fill="none" stroke="var(--text)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="64" cy="21" r="7.5" fill="var(--text)"/>
+        <circle cx="64" cy="44" r="4.5" fill="var(--accent)"/>
+        <path d="M114 44 L142 44 M136 39 L143 44 L136 49" fill="none" stroke="var(--success)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+      `;
+      break;
+
+    case 'm_butterfly':
+      art = `
+        <circle cx="88" cy="26" r="7.5" fill="var(--text)"/>
+        <line x1="88" y1="36" x2="88" y2="82" stroke="var(--text)" stroke-width="5.5" stroke-linecap="round"/>
+        <path d="M44 46 Q56 62 88 50 Q120 62 132 46" fill="none" stroke="var(--text)" stroke-width="5" stroke-linecap="round"/>
+        <circle cx="68" cy="48" r="4.5" fill="var(--accent)"/>
+        <circle cx="108" cy="48" r="4.5" fill="var(--accent)"/>
+        <path d="M46 70 Q66 78 80 72 M75 68 L81 72 L76 77" fill="none" stroke="var(--success)" stroke-width="2.5" stroke-linecap="round"/>
+        <path d="M130 70 Q110 78 96 72 M101 68 L95 72 L100 77" fill="none" stroke="var(--success)" stroke-width="2.5" stroke-linecap="round"/>
+      `;
+      break;
+
+    case 'm_ab_crunch':
+      art = `
+        <path d="M56 30 L56 70 L94 70 L94 92" fill="none" stroke="var(--border-strong)" stroke-width="4.5" stroke-linecap="round"/>
+        <path d="M68 68 Q68 42 88 34 M68 68 L100 68 L108 90" fill="none" stroke="var(--text)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="94" cy="24" r="7.5" fill="var(--text)"/>
+        <circle cx="72" cy="52" r="5" fill="var(--accent)"/>
+        <path d="M114 32 Q126 48 112 62 M112 55 L111 63 L119 61" fill="none" stroke="var(--success)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+      `;
+      break;
+
+    case 'm_abs_mat':
+      art = `
+        <line x1="20" y1="86" x2="156" y2="86" stroke="var(--border-strong)" stroke-width="4" stroke-linecap="round"/>
+        <path d="M46 78 L94 80 L138 48" fill="none" stroke="var(--text)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="34" cy="72" r="7.5" fill="var(--text)"/>
+        <circle cx="88" cy="80" r="5" fill="var(--accent)"/>
+        <path d="M136 38 Q148 54 146 72 M141 67 L146 73 L151 67" fill="none" stroke="var(--success)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      `;
+      break;
+
+    case 'm_lower_back':
+      art = `
+        <path d="M58 68 L98 68 L98 92 M122 86 L142 86" fill="none" stroke="var(--border-strong)" stroke-width="4.5" stroke-linecap="round"/>
+        <circle cx="62" cy="38" r="5" fill="var(--warning)"/>
+        <path d="M68 34 L82 66 L116 66 L128 86" fill="none" stroke="var(--text)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="64" cy="21" r="7.5" fill="var(--text)"/>
+        <circle cx="82" cy="66" r="5" fill="var(--accent)"/>
+        <path d="M92 26 Q74 22 60 28 M65 23 L59 29 L67 31" fill="none" stroke="var(--success)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      `;
+      break;
+
+    case 'c_climbmill':
+      art = `
+        <path d="M36 90 L64 90 L64 72 L92 72 L92 54 L120 54 L120 36 L144 36" fill="none" stroke="var(--border-strong)" stroke-width="4" stroke-linejoin="round"/>
+        <path d="M88 26 L86 48 L74 70 M86 48 L102 54" fill="none" stroke="var(--text)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="90" cy="15" r="7" fill="var(--text)"/>
+      `;
+      break;
+
+    case 'c_rower':
+      art = `
+        <line x1="28" y1="78" x2="144" y2="78" stroke="var(--border-strong)" stroke-width="4" stroke-linecap="round"/>
+        <circle cx="40" cy="64" r="12" fill="none" stroke="var(--border-strong)" stroke-width="4"/>
+        <line x1="52" y1="58" x2="96" y2="56" stroke="var(--text-muted)" stroke-width="2.5"/>
+        <path d="M110 40 L102 68 L68 74 M96 56 L108 54" fill="none" stroke="var(--text)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="112" cy="28" r="7" fill="var(--text)"/>
+      `;
+      break;
+
+    case 'c_bike':
+      art = `
+        <circle cx="54" cy="74" r="15" fill="none" stroke="var(--border-strong)" stroke-width="4"/>
+        <circle cx="122" cy="74" r="15" fill="none" stroke="var(--border-strong)" stroke-width="4"/>
+        <path d="M76 34 L68 58 L88 74 M76 34 L106 46" fill="none" stroke="var(--text)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="80" cy="22" r="7" fill="var(--text)"/>
+      `;
+      break;
+
+    default:
+      art = `
+        <line x1="32" y1="86" x2="144" y2="82" stroke="var(--border-strong)" stroke-width="5" stroke-linecap="round"/>
+        <path d="M88 28 L84 54 L68 80 M84 54 L104 76 M72 44 L102 40" fill="none" stroke="var(--text)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="90" cy="17" r="7" fill="var(--text)"/>
+      `;
+      break;
   }
 
   return `
-    <svg viewBox="0 0 230 104" class="form-diagram-svg" aria-hidden="true">
-      <style>
-        .fd-lbl { fill: var(--text-secondary); font-size: 9.5px; font-weight: 700; }
-      </style>
+    <svg viewBox="0 0 172 100" class="form-diagram-svg" aria-hidden="true">
       ${art}
     </svg>
   `;

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'weights-ai-coach-v9';
+const CACHE_NAME = 'weights-ai-coach-v10';
 const ASSETS = [
   './',
   './index.html',

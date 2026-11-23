@@ -1,23 +1,25 @@
 /**
- * Weights — Persistent AI Coach State (Athletes, Mesocycle, Floor Calibration, Wearables)
+ * Weights — Persistent AI Coach State (v6: 8-Week Block Periodization + Clean Rep Windows)
  */
 
 import { GYM_MACHINES } from './floor.js';
 import { estimate1RM } from './science.js';
 
-export const STORAGE_KEY = 'weights_ai_coach_v5';
+export const STORAGE_KEY = 'weights_ai_coach_v6';
+const LEGACY_KEYS = ['weights_ai_coach_v5'];
 
 function buildSeedLifts(now) {
   const day = 86400000;
-  // Calibrated directly to the user's actual Manegg Motion working loads
   const seed = {
     m_calf: { weight: 5, reps: 15, daysAgo: 3 },
-    m_leg_ext: { weight: 36, reps: 12, daysAgo: 3 },
-    m_leg_press: { weight: 10, reps: 10, daysAgo: 3 },
+    m_leg_ext: { weight: 35, reps: 12, daysAgo: 3 },
+    m_leg_press: { weight: 12.5, reps: 8, daysAgo: 3 },
+    m_leg_curl: { weight: 35, reps: 10, daysAgo: 3 },
     m_lower_back: { weight: 25, reps: 12, daysAgo: 3 },
     m_low_row: { weight: 35, reps: 10, daysAgo: 5 },
     m_lat_pull: { weight: 40, reps: 10, daysAgo: 5 },
-    m_smith_incline: { weight: 5, reps: 10, daysAgo: 5 },
+    m_chest_press: { weight: 35, reps: 10, daysAgo: 5 },
+    m_smith_incline: { weight: 7.5, reps: 8, daysAgo: 5 },
     m_butterfly: { weight: 30, reps: 12, daysAgo: 5 },
   };
 
@@ -43,7 +45,7 @@ function buildSeedLifts(now) {
 export function createDefaultState(now = Date.now()) {
   const day = 86400000;
   return {
-    version: 5,
+    version: 6,
     gymName: 'Manegg Motion',
     settings: {
       unit: 'kg',
@@ -54,8 +56,8 @@ export function createDefaultState(now = Date.now()) {
     },
     athlete: {
       name: 'You',
-      goal: 'max_strength', // Climber: neural max strength without hypertrophy mass bloat
-      cardioGoal: 'cardio_health', // VO2max + Zone 2 cardiovascular health
+      goal: 'max_strength',
+      cardioGoal: 'cardio_health',
       focusAreas: ['pull', 'core'],
       daysPerWeek: 3,
       targetMinutes: 45,
@@ -64,13 +66,14 @@ export function createDefaultState(now = Date.now()) {
       baselineHrv: 58,
       todayHrv: null,
       maxHr: 188,
+      inSeasonNeuralOnly: false,
       lastWorkoutAt: now - 3 * day,
-      lastSplitId: 'lower_push',
+      lastSplitId: 'finger_safe_lower',
       jointFlags: {},
       formNotes: {},
       mesocycle: {
-        week: 1,
-        sessionInWeek: 2,
+        week: 1, // Starts in Block 1 · Week 1 (8–10 rep Structural Base)
+        sessionInWeek: 1,
         totalCompleted: 1,
       },
       lifts: buildSeedLifts(now),
@@ -89,7 +92,7 @@ export function createDefaultState(now = Date.now()) {
       lifts: {},
     },
     wearable: {
-      deviceType: 'garmin_venu_4s',
+      deviceType: 'fitbit_air',
       restingHr: 58,
       maxHr: 188,
       googleHealthClientId: '',
@@ -101,25 +104,24 @@ export function createDefaultState(now = Date.now()) {
       {
         id: 'hist_seed_1',
         date: now - 3 * day,
-        splitName: 'Heavy Legs, Push & Core',
+        splitName: 'Legs, Heel-Hook & Shoulders',
         mesoWeek: 1,
-        mesoName: 'Base',
-        durationMin: 41,
-        totalSets: 15,
+        mesoName: 'Base W1',
+        durationMin: 42,
+        totalSets: 11,
         avgBpm: 124,
-        peakBpm: 154,
-        estKcal: 295,
+        peakBpm: 152,
+        estKcal: 285,
         highlights: [
-          { name: 'Leg Press', summary: '3×10 @ 10 kg', e1rmGain: 0 },
-          { name: 'Leg Ext', summary: '3×12 @ 36 kg', e1rmGain: 0 },
-          { name: 'Back Ext', summary: '3×12 @ 25 kg', e1rmGain: 0 },
+          { name: 'Seated Leg Press', summary: '2×9 @ 12.5 kg', e1rmGain: 0 },
+          { name: 'Seated Leg Curl', summary: '3×10 @ 35 kg', e1rmGain: 0 },
         ],
       },
     ],
     timer: {
       running: false,
       paused: false,
-      mode: 'rest', // 'rest' | 'warmup' | 'cardio'
+      mode: 'rest',
       startedAt: null,
       durationSec: 120,
       endTime: null,
@@ -134,10 +136,38 @@ export function createDefaultState(now = Date.now()) {
 
 export function loadState() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return createDefaultState();
-    const parsed = JSON.parse(raw);
     const defaults = createDefaultState();
+    let raw = localStorage.getItem(STORAGE_KEY);
+
+    // Migrate lift history, floor calibration, and wearable settings from v5 while resetting stale 4-rep activeSession
+    if (!raw) {
+      for (const oldKey of LEGACY_KEYS) {
+        const legacyRaw = localStorage.getItem(oldKey);
+        if (legacyRaw) {
+          const legacy = JSON.parse(legacyRaw);
+          return {
+            ...defaults,
+            settings: { ...defaults.settings, ...(legacy.settings || {}) },
+            athlete: {
+              ...defaults.athlete,
+              ...(legacy.athlete || {}),
+              mesocycle: { week: 1, sessionInWeek: 1, totalCompleted: legacy.athlete?.mesocycle?.totalCompleted || 1 },
+              lifts: { ...defaults.athlete.lifts, ...(legacy.athlete?.lifts || {}) },
+              jointFlags: { ...(legacy.athlete?.jointFlags || {}) },
+              formNotes: { ...(legacy.athlete?.formNotes || {}) },
+            },
+            partner: { ...defaults.partner, ...(legacy.partner || {}) },
+            wearable: { ...defaults.wearable, ...(legacy.wearable || {}) },
+            floorOverrides: { ...(legacy.floorOverrides || {}) },
+            history: Array.isArray(legacy.history) ? legacy.history : defaults.history,
+            activeSession: null, // Force fresh 8–10 rep Block 1 session generation
+          };
+        }
+      }
+      return defaults;
+    }
+
+    const parsed = JSON.parse(raw);
     return {
       ...defaults,
       ...parsed,
@@ -150,14 +180,8 @@ export function loadState() {
         jointFlags: { ...(parsed.athlete?.jointFlags || {}) },
         formNotes: { ...(parsed.athlete?.formNotes || {}) },
       },
-      partner: {
-        ...defaults.partner,
-        ...(parsed.partner || {}),
-      },
-      wearable: {
-        ...defaults.wearable,
-        ...(parsed.wearable || {}),
-      },
+      partner: { ...defaults.partner, ...(parsed.partner || {}) },
+      wearable: { ...defaults.wearable, ...(parsed.wearable || {}) },
       floorOverrides: { ...(parsed.floorOverrides || {}) },
       timer: { ...defaults.timer, ...(parsed.timer || {}) },
     };

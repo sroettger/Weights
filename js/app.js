@@ -1,10 +1,10 @@
 /**
- * Weights — AI-First Strength & Cardio Coach Controller
+ * Weights — AI-First Strength & Cardio Coach Controller (Clean 1-Tap Rep Overhaul)
  */
 
 import { loadState, saveState, createDefaultState } from './state.js';
 import { FLOOR_DIMS, getMachineById } from './floor.js';
-import { GOAL_PROFILES, evaluateHrRestBrake } from './science.js';
+import { GOAL_PROFILES, getMesocyclePhase, evaluateHrRestBrake } from './science.js';
 import {
   createDynamicSession,
   getActiveStep,
@@ -39,7 +39,6 @@ const state = loadState();
 let activeModal = null; // 'goal' | 'floor' | 'pain' | 'plan' | 'wearable' | 'form'
 let editFloorPins = false;
 let draggingMachineId = null;
-let checkinDraft = { open: false, stepId: null, reps: 5 };
 let briefingView = 'plan'; // 'plan' | 'map'
 let formUi = { tab: 'guide', machineId: null, query: '', rawText: '' };
 let toastTimer = null;
@@ -83,15 +82,15 @@ function ensureSession() {
 
 function syncHeader() {
   const goal = GOAL_PROFILES[state.athlete.goal] || GOAL_PROFILES.max_strength;
-  const w = state.athlete.mesocycle?.week || 1;
-  const d = state.athlete.mesocycle?.sessionInWeek || 1;
+  const meso = getMesocyclePhase(state.athlete.mesocycle?.week || 1);
   if (headerMesoTagEl) {
-    headerMesoTagEl.textContent = `W${w}·D${d} · ${goal.short}`;
+    headerMesoTagEl.textContent =
+      state.athlete.goal === 'max_strength' ? meso.headerTag : goal.short;
   }
 }
 
 // ============================================================================
-// Wearable + Drift-Free Timer (with Science-Backed HR Rest Brake)
+// Wearable + Drift-Free Timer
 // ============================================================================
 
 const wearable = new WearableManager(
@@ -101,7 +100,6 @@ const wearable = new WearableManager(
     maxHr: state.athlete.maxHr || 188,
   }),
   (snap) => {
-    // Feed live HRV into athlete state if broadcast by watch
     if (snap.hrvMs && !state.athlete.todayHrv) {
       state.athlete.todayHrv = snap.hrvMs;
     }
@@ -124,16 +122,15 @@ const restTimer = new RestTimer(
       restTimer.stop();
       saveState(state);
       renderAll();
-      showToast('Recovered · Start set');
+      showToast('Rest done · Ready for next set');
     } else if (sess && (tSnap.mode === 'warmup' || tSnap.mode === 'cardio')) {
       restTimer.stop();
       completeCurrentStep(sess, state.athlete);
       saveState(state);
       renderAll();
-      showToast('Block complete');
+      showToast('Step complete');
     }
   },
-  // Asymmetric HR recovery brake callback
   (tSnap) => {
     if (!state.settings.hrAutoExtendRest) return null;
     const wSnap = wearable.getSnapshot();
@@ -145,9 +142,7 @@ const restTimer = new RestTimer(
       elapsedSec: tSnap.elapsedSec,
       extensionsSoFar: tSnap.hrExtensions,
     });
-    if (brake) {
-      showToast(brake.reason);
-    }
+    if (brake) showToast(brake.reason);
     return brake;
   }
 );
@@ -157,8 +152,8 @@ function syncWearableUI(snap) {
   if (wearableBtnEl && wearableBtnLabelEl) {
     wearableBtnEl.classList.toggle('is-live', isLive);
     wearableBtnLabelEl.textContent = isLive
-      ? `${snap.bpm ?? '--'} · Z${snap.zone.zone || 1}`
-      : snap.preset?.shortLabel || 'Venu 4s';
+      ? `${snap.bpm ?? '--'} bpm`
+      : snap.preset?.shortLabel || 'Air';
   }
 
   const mount = document.getElementById('live-hr-mount');
@@ -180,7 +175,6 @@ function renderStageOnly() {
     sess,
     restTimer.getSnapshot(),
     wearable.getSnapshot(),
-    checkinDraft,
     briefingView
   );
 }
@@ -233,7 +227,6 @@ function rebuildBriefingSession(overrides = {}) {
   const prevSplit = overrides.splitOverride || state.activeSession?.splitId;
   const prevDur = overrides.durationMin || state.activeSession?.durationTargetMin || state.athlete.targetMinutes;
   restTimer.stop();
-  checkinDraft = { open: false, stepId: null, reps: 5 };
   state.activeSession = createDynamicSession(state, {
     splitOverride: overrides.useRecommended ? null : prevSplit,
     durationMin: prevDur,
@@ -255,19 +248,19 @@ document.addEventListener('click', (event) => {
 
   switch (action) {
     case 'open-goal-modal':
-      openModal('goal', 'Goals & Mesocycle');
+      openModal('goal', 'Training Plan & Goals');
       break;
     case 'open-floor-modal':
-      openModal('floor', 'Manegg Motion Floor Plan');
+      openModal('floor', 'Manegg Motion Floor Map');
       break;
     case 'open-pain-modal':
-      openModal('pain', 'Joint & Pain Protection');
+      openModal('pain', 'Joint Pain Protection');
       break;
     case 'open-plan-modal':
-      openModal('plan', 'Session Queue & Settings');
+      openModal('plan', 'Workout Queue & Settings');
       break;
     case 'open-wearable-modal':
-      openModal('wearable', 'Heart Rate Watch');
+      openModal('wearable', 'Heart Rate Sensor');
       break;
     case 'open-form-modal': {
       const curSt = getActiveStep(sess);
@@ -277,7 +270,17 @@ document.addEventListener('click', (event) => {
         query: '',
         rawText: '',
       };
-      openModal('form', 'Machine Setup & Form Coach');
+      openModal('form', 'Machine Guide & Troubleshooting');
+      break;
+    }
+    case 'open-form-modal-for': {
+      formUi = {
+        tab: 'guide',
+        machineId: btn.dataset.machineId || 'm_ab_crunch',
+        query: '',
+        rawText: '',
+      };
+      openModal('form', 'Machine Guide & Troubleshooting');
       break;
     }
     case 'set-form-tab': {
@@ -324,11 +327,9 @@ document.addEventListener('click', (event) => {
     case 'apply-form-fix': {
       const cue = btn.dataset.cue || '';
       const dropLoad = btn.dataset.drop === 'true';
-      // Ensure we apply to whichever machine is selected in formUi
       const curSt = getActiveStep(sess);
       if (curSt && (!formUi.machineId || formUi.machineId === curSt.stationId)) {
         const msg = applyFormAdjustment(sess, state.athlete, { pinCue: cue, dropLoad }, state.floorOverrides);
-        checkinDraft.open = false;
         saveState(state);
         closeModal();
         renderAll();
@@ -342,7 +343,7 @@ document.addEventListener('click', (event) => {
         };
         saveState(state);
         closeModal();
-        showToast('Cue saved for station');
+        showToast('Reminder saved for machine');
       }
       break;
     }
@@ -354,7 +355,6 @@ document.addEventListener('click', (event) => {
         { swapToId, rememberSwap: true },
         state.floorOverrides
       );
-      checkinDraft.open = false;
       saveState(state);
       closeModal();
       renderAll();
@@ -369,16 +369,6 @@ document.addEventListener('click', (event) => {
     case 'set-briefing-view': {
       briefingView = btn.dataset.view === 'map' ? 'map' : 'plan';
       renderStageOnly();
-      break;
-    }
-    case 'open-form-modal-for': {
-      formUi = {
-        tab: 'guide',
-        machineId: btn.dataset.machineId || 'm_ab_crunch',
-        query: '',
-        rawText: '',
-      };
-      openModal('form', 'Machine Setup & Form Coach');
       break;
     }
     case 'briefing-swap-step': {
@@ -431,7 +421,7 @@ document.addEventListener('click', (event) => {
     case 'toggle-partner-quick': {
       state.partner.enabled = !state.partner.enabled;
       rebuildBriefingSession();
-      showToast(state.partner.enabled ? 'Partner co-location active' : 'Solo mode');
+      showToast(state.partner.enabled ? 'Partner mode on' : 'Solo mode');
       break;
     }
     case 'start-session': {
@@ -450,8 +440,10 @@ document.addEventListener('click', (event) => {
     case 'start-timed-step': {
       feedback.ensureAudio();
       const step = getActiveStep(sess);
-      if (step) {
-        restTimer.start(step.durationSec, step.type === 'warmup' ? 'Warm-up' : 'Cardio', step.type);
+      if (step && (step.type === 'warmup' || step.type === 'cardio')) {
+        restTimer.start(step.durationSec, { mode: step.type, label: step.type });
+        saveState(state);
+        renderStageOnly();
       }
       break;
     }
@@ -463,67 +455,47 @@ document.addEventListener('click', (event) => {
       break;
     }
 
-    // Lift stage controls
+    // Strength station controls (1-tap rep logging!)
     case 'nudge-load': {
       const delta = Number(btn.dataset.delta) || 0;
       const step = getActiveStep(sess);
       const info = getCurrentSetInfo(step);
       if (step && info) {
-        for (let i = info.arrayIndex; i < step.sets.length; i++) {
-          if (!step.sets[i].done && step.sets[i].kind === info.set.kind) {
-            step.sets[i].weightKg = Math.max(0, Math.round((step.sets[i].weightKg + delta) * 10) / 10);
+        for (let i = info.arrayIndex; i < step.sets.length; i += 1) {
+          const s = step.sets[i];
+          if (!s.done && s.kind === info.set.kind) {
+            s.weightKg = Math.max(0, Math.round((s.weightKg + delta) * 10) / 10);
           }
         }
         saveState(state);
-        renderAll();
-      }
-      break;
-    }
-    case 'open-checkin': {
-      feedback.ensureAudio();
-      const step = getActiveStep(sess);
-      const info = getCurrentSetInfo(step);
-      if (step && info) {
-        checkinDraft = { open: true, stepId: step.id, reps: info.set.targetReps };
         renderStageOnly();
       }
       break;
     }
-    case 'cancel-checkin': {
-      checkinDraft = { open: false, stepId: null, reps: 5 };
-      renderStageOnly();
-      break;
-    }
-    case 'step-checkin-reps': {
-      const d = parseInt(btn.dataset.delta, 10) || 0;
-      checkinDraft.reps = Math.max(1, Math.min(50, (checkinDraft.reps || 5) + d));
-      renderStageOnly();
-      break;
-    }
-    case 'submit-set': {
-      const effort = btn.dataset.effort || 'solid';
-      feedback.playSetComplete(state.settings.sound);
-      const res = recordLiftSetAndAdapt(
+    case 'log-reps': {
+      feedback.ensureAudio();
+      feedback.playLogConfirm(state.settings.sound);
+      const actualReps = parseInt(btn.dataset.reps, 10) || 8;
+      const outcome = recordLiftSetAndAdapt(
         sess,
         state.athlete,
-        { actualReps: checkinDraft.reps, effort },
+        { actualReps },
         state.settings.unit
       );
-      checkinDraft = { open: false, stepId: null, reps: 5 };
-      if (res) {
-        if (!res.finishedSession && res.restSec > 0) {
-          restTimer.start(res.restSec, 'Rest', 'rest');
+      if (outcome) {
+        if (outcome.coachBanner) showToast(outcome.coachBanner);
+        if (!outcome.finishedSession && outcome.restSec > 0) {
+          restTimer.start(outcome.restSec, { mode: 'rest', label: 'Rest' });
         } else {
           restTimer.stop();
         }
-        if (res.coachBanner) showToast(res.coachBanner);
       }
       saveState(state);
       renderAll();
       break;
     }
 
-    // Rest stage controls
+    // Rest timer controls
     case 'timer-adjust': {
       const delta = parseInt(btn.dataset.delta, 10) || 0;
       restTimer.adjust(delta);
@@ -537,10 +509,9 @@ document.addEventListener('click', (event) => {
       break;
     }
 
-    // Dynamic floor adaptations (Busy / Pain / Time / Skip)
+    // Live Coach Adaptation Triggers
     case 'machine-busy': {
       restTimer.stop();
-      checkinDraft.open = false;
       const msg = rerouteBusyStation(sess, state.athlete, state.floorOverrides);
       saveState(state);
       renderAll();
@@ -548,10 +519,9 @@ document.addEventListener('click', (event) => {
       break;
     }
     case 'report-pain': {
-      const jointId = btn.dataset.joint;
+      const joint = btn.dataset.joint;
       restTimer.stop();
-      checkinDraft.open = false;
-      const msg = applyPainProtection(sess, state.athlete, jointId, state.floorOverrides);
+      const msg = applyPainProtection(sess, state.athlete, joint, state.floorOverrides);
       saveState(state);
       closeModal();
       renderAll();
@@ -562,42 +532,53 @@ document.addEventListener('click', (event) => {
       state.athlete.jointFlags = {};
       saveState(state);
       refreshOpenModal();
-      showToast('Cleared joint flags');
+      showToast('Protected areas cleared');
       break;
     }
     case 'compress-time': {
       const msg = compressRemainingSession(sess);
       saveState(state);
+      closeModal();
       renderAll();
       showToast(msg);
       break;
     }
     case 'skip-step': {
       restTimer.stop();
-      checkinDraft.open = false;
       completeCurrentStep(sess, state.athlete);
       saveState(state);
       renderAll();
-      showToast('Skipped block');
+      showToast('Skipped exercise');
       break;
     }
-
-    // Summary completion
     case 'finish-and-save-session': {
       restTimer.stop();
+      feedback.setWakeLock(false);
       finalizeSessionToPlan(state, sess, wearable.getSnapshot());
-      state.activeSession = createDynamicSession(state, {
-        liveWearable: wearable.getSnapshot(),
-      });
+      state.activeSession = createDynamicSession(state, { liveWearable: wearable.getSnapshot() });
       saveState(state);
       renderAll();
-      showToast('Plan updated for next session');
+      showToast('Workout saved · Next session ready');
       break;
     }
 
-    // Goal & Mesocycle sheet actions
+    // Goal & 8-Week Block modal controls
     case 'set-athlete-goal': {
       state.athlete.goal = btn.dataset.goal;
+      saveState(state);
+      refreshOpenModal();
+      break;
+    }
+    case 'set-meso-block': {
+      const blk = parseInt(btn.dataset.block, 10) || 1;
+      state.athlete.mesocycle.week = blk === 2 ? 5 : 1;
+      saveState(state);
+      refreshOpenModal();
+      break;
+    }
+    case 'set-meso-week': {
+      const w = parseInt(btn.dataset.week, 10) || 1;
+      state.athlete.mesocycle.week = w;
       saveState(state);
       refreshOpenModal();
       break;
@@ -605,8 +586,11 @@ document.addEventListener('click', (event) => {
     case 'toggle-focus-area': {
       const area = btn.dataset.area;
       const cur = new Set(state.athlete.focusAreas || []);
-      if (cur.has(area)) cur.delete(area);
-      else cur.add(area);
+      if (cur.has(area)) {
+        if (cur.size > 1) cur.delete(area);
+      } else {
+        cur.add(area);
+      }
       state.athlete.focusAreas = [...cur];
       saveState(state);
       refreshOpenModal();
@@ -614,12 +598,6 @@ document.addEventListener('click', (event) => {
     }
     case 'set-cardio-goal': {
       state.athlete.cardioGoal = btn.dataset.cardio;
-      saveState(state);
-      refreshOpenModal();
-      break;
-    }
-    case 'set-meso-week': {
-      state.athlete.mesocycle.week = parseInt(btn.dataset.week, 10) || 1;
       saveState(state);
       refreshOpenModal();
       break;
@@ -633,15 +611,18 @@ document.addEventListener('click', (event) => {
     case 'toggle-partner-area': {
       const area = btn.dataset.area;
       const cur = new Set(state.partner.focusAreas || []);
-      if (cur.has(area)) cur.delete(area);
-      else cur.add(area);
+      if (cur.has(area)) {
+        if (cur.size > 1) cur.delete(area);
+      } else {
+        cur.add(area);
+      }
       state.partner.focusAreas = [...cur];
       saveState(state);
       refreshOpenModal();
       break;
     }
 
-    // Floor Map pin calibration
+    // Floor calibration controls
     case 'toggle-floor-edit': {
       editFloorPins = !editFloorPins;
       refreshOpenModal();
@@ -652,17 +633,11 @@ document.addEventListener('click', (event) => {
       saveState(state);
       refreshOpenModal();
       renderStageOnly();
-      showToast('Floor pins reset');
+      showToast('Floor map reset');
       break;
     }
 
-    // Queue & Settings sheet
-    case 'regenerate-session': {
-      rebuildBriefingSession({ useRecommended: true });
-      closeModal();
-      showToast('Session rebuilt');
-      break;
-    }
+    // Plan queue & settings modal controls
     case 'jump-step': {
       const idx = parseInt(btn.dataset.index, 10);
       if (Number.isFinite(idx) && sess.steps[idx]) {
@@ -676,12 +651,19 @@ document.addEventListener('click', (event) => {
       }
       break;
     }
+    case 'regenerate-session': {
+      rebuildBriefingSession({ useRecommended: true });
+      closeModal();
+      showToast('Fresh workout generated');
+      break;
+    }
     case 'toggle-setting': {
-      const k = btn.dataset.key;
-      state.settings[k] = !state.settings[k];
-      saveState(state);
-      refreshOpenModal();
-      renderStageOnly();
+      const key = btn.dataset.key;
+      if (key in state.settings) {
+        state.settings[key] = !state.settings[key];
+        saveState(state);
+        refreshOpenModal();
+      }
       break;
     }
     case 'toggle-theme': {
@@ -699,7 +681,7 @@ document.addEventListener('click', (event) => {
       break;
     }
     case 'reset-all': {
-      if (window.confirm('Reset AI Coach profile & history to defaults?')) {
+      if (window.confirm('Reset profile & workout history to defaults?')) {
         restTimer.stop();
         Object.assign(state, createDefaultState());
         state.activeSession = createDynamicSession(state);
@@ -755,7 +737,6 @@ document.addEventListener('click', (event) => {
   }
 });
 
-// Form submissions inside modals
 mainEl.addEventListener('submit', (event) => {
   if (event.target.id === 'briefing-feedback-form') {
     event.preventDefault();
@@ -788,7 +769,7 @@ modalBodyEl.addEventListener('submit', (event) => {
 
     rebuildBriefingSession({ useRecommended: true });
     closeModal();
-    showToast('Goals & session updated');
+    showToast('Plan & workout updated');
     return;
   }
 
@@ -802,7 +783,7 @@ modalBodyEl.addEventListener('submit', (event) => {
     state.wearable.maxHr = mhr;
     saveState(state);
     syncWearableUI(wearable.getSnapshot());
-    showToast('HR profile saved');
+    showToast('HR settings saved');
     return;
   }
 
@@ -840,7 +821,6 @@ modalBodyEl.addEventListener('change', (event) => {
   }
 });
 
-// Interactive Floor-Plan Pin Calibration (Drag & Drop on mobile/desktop)
 modalBodyEl.addEventListener('pointerdown', (e) => {
   if (!editFloorPins) return;
   const pin = e.target.closest('[data-fp-machine]');
@@ -883,7 +863,6 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && activeModal) closeModal();
 });
 
-// Google Health API v4 OAuth redirect pickup
 const oauthRes = WearableManager.extractAccessTokenFromHash();
 if (oauthRes?.accessToken) {
   WearableManager.fetchGoogleHealthSummary(oauthRes.accessToken)
@@ -892,7 +871,7 @@ if (oauthRes?.accessToken) {
       if (summary.restingHr) state.athlete.todayRhr = summary.restingHr;
       if (summary.hrvMs) state.athlete.todayHrv = summary.hrvMs;
       rebuildBriefingSession({ useRecommended: true });
-      showToast('Google Health RHR & HRV synced');
+      showToast('Google Health synced');
     })
     .catch(() => showToast('Google Health sync failed'));
 }
