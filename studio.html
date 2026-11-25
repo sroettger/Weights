@@ -1,0 +1,1255 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Manegg Motion — Floor Plan &amp; Matrix Catalog Studio</title>
+  <style>
+    :root, [data-theme="dark"] {
+      --bg: #111317;
+      --card: #181b21;
+      --surface: #20242d;
+      --border: #2c323f;
+      --border-strong: #3d4556;
+      --fg: #f3f4f6;
+      --muted: #9aa3b2;
+      --accent: #f59e0b;
+      --accent-hover: #fbbf24;
+      --accent-fg: #111317;
+      --cyan: #38bdf8;
+      --teal: #2dd4bf;
+      --violet: #a78bfa;
+      --emerald: #10b981;
+      --rose: #f43f5e;
+    }
+    [data-theme="light"] {
+      --bg: #f3f0ea;
+      --card: #ffffff;
+      --surface: #ebe7df;
+      --border: #d6d1c7;
+      --border-strong: #b8b1a4;
+      --fg: #17191e;
+      --muted: #5c6270;
+      --accent: #d97706;
+      --accent-hover: #b45309;
+      --accent-fg: #ffffff;
+      --cyan: #0284c7;
+      --teal: #0d9488;
+      --violet: #7c3aed;
+      --emerald: #059669;
+      --rose: #e11d48;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 14px;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-size: 13px;
+      line-height: 1.4;
+      user-select: none;
+    }
+    input, select, textarea {
+      user-select: auto;
+      font-family: inherit;
+      color: var(--fg);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 6px 9px;
+      font-size: 12px;
+      width: 100%;
+      outline: none;
+    }
+    input:focus, select:focus, textarea:focus {
+      border-color: var(--accent);
+    }
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+    .shell {
+      max-width: 1420px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 12px 14px;
+    }
+    .topbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .title-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    h1 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 800;
+      letter-spacing: -0.01em;
+    }
+    .sub {
+      margin: 3px 0 0;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .badge {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 9px;
+      border-radius: 999px;
+      background: var(--surface);
+      color: var(--muted);
+      border: 1px solid var(--border);
+    }
+    .badge.is-dirty {
+      background: rgba(245, 158, 11, 0.16);
+      color: var(--accent);
+      border-color: rgba(245, 158, 11, 0.45);
+    }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+    }
+    .seg-group {
+      display: inline-flex;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      padding: 2px;
+      gap: 2px;
+    }
+    .btn {
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--fg);
+      border-radius: 8px;
+      padding: 6px 11px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.12s ease, border-color 0.12s ease;
+    }
+    .btn:hover { background: var(--surface); }
+    .btn-seg {
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      border-radius: 7px;
+      padding: 5px 10px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .btn-seg.is-active {
+      background: var(--card);
+      color: var(--fg);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.22);
+    }
+    .btn-primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: var(--accent-fg);
+    }
+    .btn-primary:hover {
+      background: var(--accent-hover);
+      border-color: var(--accent-hover);
+    }
+    .btn-danger {
+      background: rgba(244, 63, 94, 0.12);
+      border-color: rgba(244, 63, 94, 0.38);
+      color: var(--rose);
+    }
+    .btn-danger:hover {
+      background: rgba(244, 63, 94, 0.22);
+    }
+    .workspace {
+      display: grid;
+      grid-template-columns: minmax(0, 1.9fr) minmax(320px, 1fr);
+      gap: 12px;
+      align-items: start;
+    }
+    @media (max-width: 980px) {
+      .workspace { grid-template-columns: 1fr; }
+    }
+    .legend-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 8px;
+      font-size: 11.5px;
+      color: var(--muted);
+    }
+    .legend-items {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+    }
+    .swatch {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 3px;
+      margin-right: 5px;
+      vertical-align: -1px;
+    }
+    .canvas-box {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .studio-svg {
+      width: 100%;
+      max-height: 74vh;
+      height: auto;
+      display: block;
+      margin: 0 auto;
+      touch-action: none;
+    }
+    .mach-node { cursor: grab; }
+    .mach-node:active { cursor: grabbing; }
+    .canvas-foot {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-top: 8px;
+      font-size: 11.5px;
+      color: var(--muted);
+    }
+    .status-ok { color: var(--emerald); font-weight: 700; }
+    .status-warn { color: var(--rose); font-weight: 700; }
+    .side-col {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .tabs-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      padding: 3px;
+      gap: 3px;
+      margin-bottom: 12px;
+    }
+    .panel { display: flex; flex-direction: column; gap: 10px; }
+    .is-hidden { display: none !important; }
+    .lbl {
+      display: block;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--muted);
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+    .catalog-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 9px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .catalog-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+    }
+    .spec-pill {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent);
+    }
+    .model-detail {
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .row-between {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding-top: 4px;
+    }
+    .toast {
+      position: fixed;
+      right: 16px;
+      bottom: 16px;
+      background: var(--accent);
+      color: var(--accent-fg);
+      padding: 9px 14px;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 800;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.18s ease;
+      z-index: 50;
+    }
+    .toast.is-visible { opacity: 1; }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <!-- Top Header -->
+    <header class="card topbar">
+      <div>
+        <div class="title-row">
+          <h1>Manegg Motion · Floor Plan &amp; Matrix Catalog Studio</h1>
+          <span id="change-badge" class="badge">Baseline (0 edits)</span>
+        </div>
+        <p class="sub">
+          Drag any station on the 1:1 meter grid · Swap official Matrix Fitness models · Resize walls · Copy proposed changes in 1 click
+        </p>
+      </div>
+
+      <div class="toolbar">
+        <div class="seg-group">
+          <button id="view-sec1-btn" type="button" class="btn-seg is-active">Sec 1 Zoom (16×18m)</button>
+          <button id="view-full-btn" type="button" class="btn-seg">Full Gym (28×18m)</button>
+        </div>
+        <button id="rays-btn" type="button" class="btn">📷 9 Photo Rays</button>
+        <button id="add-machine-btn" type="button" class="btn">+ Add Machine</button>
+        <button id="theme-btn" type="button" class="btn">Light / Dark</button>
+        <button id="reset-btn" type="button" class="btn">Reset</button>
+        <button id="copy-diff-btn" type="button" class="btn btn-primary">Copy Proposed Changes</button>
+      </div>
+    </header>
+
+    <!-- Main 2-Column Workspace -->
+    <div class="workspace">
+      <!-- Left: 1:1 Meter Blueprint Canvas -->
+      <section class="card">
+        <div class="legend-bar">
+          <div class="legend-items">
+            <span><span class="swatch" style="background:rgba(245,158,11,0.32);border:1px solid #f59e0b;"></span>Coached Station</span>
+            <span><span class="swatch" style="background:rgba(56,189,248,0.22);border:1px solid #38bdf8;"></span>Verified Rack / Fixture</span>
+            <span><span class="swatch" style="background:rgba(167,139,250,0.22);border:1px dashed #a78bfa;"></span>Sec 2 (Unmapped)</span>
+            <span><span class="swatch" style="background:rgba(244,63,94,0.32);border:1px solid #f43f5e;"></span>Footprint Overlap</span>
+          </div>
+          <span id="cursor-coords" class="mono">X: -- m · Y: -- m</span>
+        </div>
+
+        <div class="canvas-box">
+          <svg id="blueprint-svg" class="studio-svg" viewBox="0 0 660 720" aria-label="Interactive true-scale gym blueprint"></svg>
+        </div>
+
+        <div class="canvas-foot">
+          <span>Click any machine to inspect or change its Matrix model · Drag to move (0.1 m snap) · Triangle `▲` marks athlete entry / facing side.</span>
+          <span id="overlap-status" class="status-ok">✓ Clearances OK</span>
+        </div>
+      </section>
+
+      <!-- Right: Inspector, Room Dimensions & Diff -->
+      <aside class="side-col">
+        <div class="card">
+          <div class="tabs-3">
+            <button type="button" data-tab="machine" class="btn-seg tab-btn is-active">Machine</button>
+            <button type="button" data-tab="room" class="btn-seg tab-btn">Room Walls</button>
+            <button type="button" data-tab="diff" class="btn-seg tab-btn">Diff / Export</button>
+          </div>
+
+          <!-- TAB 1: Machine Inspector -->
+          <div id="panel-machine" class="panel">
+            <div>
+              <label class="lbl" for="item-select">Selected Floor Item</label>
+              <select id="item-select"></select>
+            </div>
+
+            <div class="catalog-box">
+              <div class="catalog-head">
+                <span class="lbl" style="margin:0;">Official Matrix Lookup</span>
+                <span id="spec-pill" class="spec-pill mono"></span>
+              </div>
+              <input id="catalog-search" type="text" placeholder="Filter 42 Matrix models (e.g. calf, glute, G7, row, press)..." />
+              <select id="catalog-select" size="5" class="mono"></select>
+              <div id="model-detail" class="model-detail"></div>
+            </div>
+
+            <div class="grid-2">
+              <div>
+                <label class="lbl" for="in-label">Display Label</label>
+                <input id="in-label" type="text" />
+              </div>
+              <div>
+                <label class="lbl" for="in-mapped">Category</label>
+                <select id="in-mapped">
+                  <option value="sec1">Sec 1 · Coached Lift</option>
+                  <option value="fixture">Sec 1 · Rack / Fixture</option>
+                  <option value="sec2">Sec 2 · Unmapped</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="grid-3">
+              <div>
+                <label class="lbl" for="in-x">Center X (m)</label>
+                <input id="in-x" type="number" step="0.1" class="mono" />
+              </div>
+              <div>
+                <label class="lbl" for="in-y">Center Y (m)</label>
+                <input id="in-y" type="number" step="0.1" class="mono" />
+              </div>
+              <div>
+                <label class="lbl" for="in-rot">Facing (°)</label>
+                <input id="in-rot" type="number" step="45" class="mono" />
+              </div>
+            </div>
+
+            <div class="grid-4">
+              <button type="button" data-rot="-90" class="btn rot-btn">↺ -90°</button>
+              <button type="button" data-rot="-45" class="btn rot-btn">↺ -45°</button>
+              <button type="button" data-rot="45" class="btn rot-btn">↻ +45°</button>
+              <button type="button" data-rot="90" class="btn rot-btn">↻ +90°</button>
+            </div>
+
+            <div class="grid-2">
+              <div>
+                <label class="lbl" for="in-w">Footprint W (m)</label>
+                <input id="in-w" type="number" step="0.05" min="0.4" max="6" class="mono" />
+              </div>
+              <div>
+                <label class="lbl" for="in-d">Footprint D (m)</label>
+                <input id="in-d" type="number" step="0.05" min="0.4" max="6" class="mono" />
+              </div>
+            </div>
+
+            <div>
+              <label class="lbl" for="in-note">Correction Note for Chat</label>
+              <input id="in-note" type="text" placeholder="e.g. Rotated facing West window, or different Matrix model..." />
+            </div>
+
+            <div class="row-between">
+              <button id="delete-item-btn" type="button" class="btn btn-danger">Delete Station</button>
+              <span id="item-delta-hint" class="mono model-detail"></span>
+            </div>
+          </div>
+
+          <!-- TAB 2: Room & Wall Dimensions -->
+          <div id="panel-room" class="panel is-hidden">
+            <div class="model-detail">
+              Coordinates in meters (`0,0` = North-West corner; North = Top Power Rack / WC wall).
+            </div>
+            <div class="grid-2">
+              <div>
+                <label class="lbl" for="rm-sec1W">Sec 1 Width · Mirror 1 X (m)</label>
+                <input id="rm-sec1W" type="number" step="0.2" min="7" max="20" class="rm-input mono" />
+              </div>
+              <div>
+                <label class="lbl" for="rm-eastStepIn">East Mirror Step Inward (m)</label>
+                <input id="rm-eastStepIn" type="number" step="0.1" min="0" max="4" class="rm-input mono" />
+              </div>
+              <div>
+                <label class="lbl" for="rm-mirrorJogY">East Mirror Step Y (m)</label>
+                <input id="rm-mirrorJogY" type="number" step="0.2" min="4" max="15" class="rm-input mono" />
+              </div>
+              <div>
+                <label class="lbl" for="rm-sec2OpenY">Sec 2 Opening Start Y (m)</label>
+                <input id="rm-sec2OpenY" type="number" step="0.2" min="8" max="17" class="rm-input mono" />
+              </div>
+              <div>
+                <label class="lbl" for="rm-westStepY">West Window Step Y (m)</label>
+                <input id="rm-westStepY" type="number" step="0.2" min="4" max="16" class="rm-input mono" />
+              </div>
+              <div>
+                <label class="lbl" for="rm-westStepIn">West Step Inward (m)</label>
+                <input id="rm-westStepIn" type="number" step="0.1" min="0" max="3" class="rm-input mono" />
+              </div>
+              <div>
+                <label class="lbl" for="rm-sec1D">Sec 1 Depth · South Wall Y (m)</label>
+                <input id="rm-sec1D" type="number" step="0.2" min="10" max="28" class="rm-input mono" />
+              </div>
+              <div>
+                <label class="lbl" for="rm-width">Total Gym Width (m)</label>
+                <input id="rm-width" type="number" step="0.5" min="18" max="50" class="rm-input mono" />
+              </div>
+            </div>
+          </div>
+
+          <!-- TAB 3: Proposed Changes Diff -->
+          <div id="panel-diff" class="panel is-hidden">
+            <div class="model-detail">
+              Paste this summary into chat — every coordinate, rotation, Matrix model code, and wall dimension updates cleanly.
+            </div>
+            <textarea id="diff-output" rows="12" readonly class="mono"></textarea>
+            <button id="copy-diff-btn-2" type="button" class="btn btn-primary" style="width:100%;">
+              Copy Proposed Changes to Clipboard
+            </button>
+          </div>
+        </div>
+
+        <!-- Section 2 Photo Tip -->
+        <div class="card">
+          <span class="lbl">Next Photos Tip (Section 2)</span>
+          <div class="model-detail" style="line-height:1.5;">
+            Stand near the <strong>Raw Concrete Column (`x=9.4, y=12.1m`)</strong> where Section 1 opens into Section 2, hold the phone in <strong>landscape</strong>, and pan 360° with ~40% overlap keeping floor planks visible.
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script>
+    (function () {
+      const MATRIX_CATALOG = [
+        // Magnum Plate-Loaded
+        { code: 'MG-PL70', series: 'Magnum Plate-Loaded', name: '45° Leg Press', de: '45° Beinpresse', widthM: 1.71, depthM: 2.29, tareKg: 75.7 },
+        { code: 'MG-PL62', series: 'Magnum Plate-Loaded', name: 'Smith Machine (90°)', de: 'Multipresse', widthM: 2.31, depthM: 1.11, tareKg: 11.3 },
+        { code: 'MG-PL12', series: 'Magnum Plate-Loaded', name: 'Vertical Bench Press', de: 'Brustpresse (Plate-Loaded)', widthM: 1.69, depthM: 1.47, tareKg: 6.8 },
+        { code: 'MG-PL13', series: 'Magnum Plate-Loaded', name: 'Supine Bench Press', de: 'Flachbank-Brustpresse', widthM: 1.55, depthM: 1.37, tareKg: 8.2 },
+        { code: 'MG-PL14', series: 'Magnum Plate-Loaded', name: 'Incline Bench Press', de: 'Schrägbank-Presse', widthM: 1.68, depthM: 1.42, tareKg: 8.2 },
+        { code: 'MG-PL23', series: 'Magnum Plate-Loaded', name: 'Shoulder Press', de: 'Schulterpresse (Plate-Loaded)', widthM: 1.60, depthM: 1.61, tareKg: 5.4 },
+        { code: 'MG-PL33', series: 'Magnum Plate-Loaded', name: 'Plate-Loaded Lat Pulldown', de: 'Latzug (Plate-Loaded)', widthM: 1.38, depthM: 1.72, tareKg: 6.8 },
+        { code: 'MG-PL34', series: 'Magnum Plate-Loaded', name: 'Plate-Loaded Seated Row', de: 'Rudermaschine (Plate-Loaded)', widthM: 1.39, depthM: 1.52, tareKg: 9.0 },
+        { code: 'MG-PL38', series: 'Magnum Plate-Loaded', name: 'Low Row', de: 'Tiefes Rudern', widthM: 1.42, depthM: 1.62, tareKg: 9.0 },
+        { code: 'MG-PL71', series: 'Magnum Plate-Loaded', name: 'Hack Squat', de: 'Hackenschmidt', widthM: 1.65, depthM: 2.24, tareKg: 63.5 },
+        { code: 'MG-PL76', series: 'Magnum Plate-Loaded', name: 'Standing Calf', de: 'Wadenheben stehend', widthM: 0.89, depthM: 1.38, tareKg: 30.4 },
+        { code: 'MG-PL77', series: 'Magnum Plate-Loaded', name: 'Seated Calf', de: 'Wadenheben sitzend', widthM: 0.76, depthM: 1.45, tareKg: 11.3 },
+        { code: 'MG-PL78', series: 'Magnum Plate-Loaded', name: 'Glute Trainer (Hip Thrust)', de: 'Glute Drive / Hip Thrust', widthM: 1.33, depthM: 1.68, tareKg: 22.7 },
+        { code: 'MG-PL79', series: 'Magnum Plate-Loaded', name: 'Squat / Lunge', de: 'Kniebeuge / Ausfallschritt', widthM: 1.70, depthM: 1.49, tareKg: 16.3 },
+        { code: 'MG-PL81', series: 'Magnum Plate-Loaded', name: 'Belt Squat', de: 'Gürtel-Kniebeuge', widthM: 1.53, depthM: 1.98, tareKg: 20.4 },
+        // Magnum Racks, Benches & Multi-Jungle
+        { code: 'MG-MR47', series: 'Magnum Racks & Benches', name: 'MEGA Power Rack', de: 'Power Rack / Squat Cage', widthM: 2.07, depthM: 2.06, tareKg: 20 },
+        { code: 'MG-MR690', series: 'Magnum Racks & Benches', name: 'MEGA Half Rack', de: 'Half Rack', widthM: 2.07, depthM: 1.75, tareKg: 20 },
+        { code: 'MG-A98', series: 'Magnum Racks & Benches', name: '10-Bar Fixed Barbell Rack', de: 'Langhantelständer', widthM: 1.52, depthM: 0.85, tareKg: 0 },
+        { code: 'MG-A78', series: 'Magnum Racks & Benches', name: 'Olympic Flat Bench', de: 'Olympia-Flachbank', widthM: 1.28, depthM: 1.73, tareKg: 20 },
+        { code: 'MG-A79', series: 'Magnum Racks & Benches', name: 'Olympic Incline Bench', de: 'Olympia-Schrägbank', widthM: 1.28, depthM: 1.75, tareKg: 20 },
+        { code: 'MG-A62', series: 'Magnum Racks & Benches', name: 'Seated Preacher Curl', de: 'Scottbank / Bizepsbank', widthM: 0.94, depthM: 1.22, tareKg: 10 },
+        { code: 'MG-A85', series: 'Magnum Racks & Benches', name: 'Multi-Adjustable Bench', de: 'Verstellbare Hantelbank', widthM: 0.75, depthM: 1.35, tareKg: 0 },
+        { code: 'MG-A538', series: 'Magnum Racks & Benches', name: '3-Tier Dumbbell Rack', de: 'Kurzhantelablage (3 Ebenen)', widthM: 4.10, depthM: 0.85, tareKg: 0 },
+        { code: 'MG-A52', series: 'Magnum Racks & Benches', name: '45° Back Extension Bench', de: '45° Rückenstrecker', widthM: 0.76, depthM: 1.34, tareKg: 0 },
+        { code: 'MG-A96', series: 'Magnum Racks & Benches', name: 'Glute Ham Bench (GHD)', de: 'Glute-Ham-Bank (GHD)', widthM: 0.85, depthM: 1.73, tareKg: 0 },
+        { code: 'MG-A94', series: 'Magnum Racks & Benches', name: 'Olympic Weight Tree', de: 'Hantelscheibenständer', widthM: 0.68, depthM: 0.68, tareKg: 0 },
+        { code: 'MG-5STACK', series: 'Magnum Multi-Jungle', name: '4-Stack Jungle Core (Lat/Row/Triceps/Hi-Lo)', de: '4-Stationen Kabelturm', widthM: 3.40, depthM: 2.10, stackKg: 105 },
+        { code: 'MG-924', series: 'Magnum Multi-Jungle', name: 'Adjustable Crossover Column (#1–18)', de: 'Kabelzug-Säule (#1–18)', widthM: 1.10, depthM: 0.95, stackKg: 90 },
+        // Ultra Selectorized w/ Console
+        { code: 'G7-S13', series: 'Ultra Console', name: 'Converging Chest Press', de: 'Brustpresse (Konsole)', widthM: 1.41, depthM: 1.40, stackKg: 108 },
+        { code: 'G7-S21', series: 'Ultra Console', name: 'Lateral Raise', de: 'Seitheben (Konsole)', widthM: 1.06, depthM: 1.35, stackKg: 90 },
+        { code: 'G7-S22', series: 'Ultra Console', name: 'Pec Fly / Rear Delt', de: 'Butterfly / Reverse (Konsole)', widthM: 1.74, depthM: 1.44, stackKg: 135 },
+        { code: 'G7-S23', series: 'Ultra Console', name: 'Converging Shoulder Press', de: 'Schulterpresse (Konsole)', widthM: 1.50, depthM: 1.55, stackKg: 108 },
+        { code: 'G7-S33', series: 'Ultra Console', name: 'Diverging Lat Pulldown', de: 'Latzug Maschine (Konsole)', widthM: 1.52, depthM: 1.60, stackKg: 108 },
+        { code: 'G7-S34', series: 'Ultra Console', name: 'Diverging Seated Row', de: 'Rudermaschine (Konsole)', widthM: 1.22, depthM: 1.55, stackKg: 108 },
+        { code: 'G7-S40', series: 'Ultra Console', name: 'Independent Biceps Curl', de: 'Bizepsmaschine (Konsole)', widthM: 1.22, depthM: 1.35, stackKg: 90 },
+        { code: 'G7-S42', series: 'Ultra Console', name: 'Triceps Press', de: 'Trizepsmaschine (Konsole)', widthM: 1.24, depthM: 1.40, stackKg: 108 },
+        { code: 'G7-S51', series: 'Ultra Console', name: 'Abdominal Crunch', de: 'Bauchpresse (Konsole)', widthM: 1.21, depthM: 1.39, stackKg: 108 },
+        { code: 'G7-S52', series: 'Ultra Console', name: 'Back Extension', de: 'Rückenstrecker (Konsole)', widthM: 1.20, depthM: 1.28, stackKg: 108 },
+        { code: 'G7-S55', series: 'Ultra Console', name: 'Rotary Torso', de: 'Rumpfrotation (Konsole)', widthM: 1.18, depthM: 1.25, stackKg: 90 },
+        { code: 'G7-S70', series: 'Ultra Console', name: 'Horizontal Leg Press', de: 'Sitzende Beinpresse (Konsole)', widthM: 1.14, depthM: 2.06, stackKg: 180 },
+        { code: 'G7-S71', series: 'Ultra Console', name: 'Leg Extension', de: 'Beinstrecker (Konsole)', widthM: 1.26, depthM: 1.22, stackKg: 108 },
+        { code: 'G7-S72', series: 'Ultra Console', name: 'Seated Leg Curl', de: 'Beinbeuger sitzend (Konsole)', widthM: 1.17, depthM: 1.49, stackKg: 90 },
+        { code: 'G7-S73', series: 'Ultra Console', name: 'Prone Leg Curl', de: 'Beinbeuger liegend (Konsole)', widthM: 1.15, depthM: 1.72, stackKg: 90 },
+        { code: 'G7-S74', series: 'Ultra Console', name: 'Hip Adductor', de: 'Adduktoren (Konsole)', widthM: 1.73, depthM: 1.82, stackKg: 90 },
+        { code: 'G7-S75', series: 'Ultra Console', name: 'Hip Abductor', de: 'Abduktoren (Konsole)', widthM: 1.73, depthM: 1.82, stackKg: 90 },
+        { code: 'G7-S77', series: 'Ultra Console', name: 'Seated Calf Extension', de: 'Wadenpresse (Konsole)', widthM: 1.07, depthM: 1.56, stackKg: 135 },
+        { code: 'G7-S78', series: 'Ultra Console', name: 'Standing Glute Kickback', de: 'Gesässmaschine / Glute (Konsole)', widthM: 0.90, depthM: 1.32, stackKg: 63 },
+        // Cardio & Turf
+        { code: 'T-ONYX', series: 'Cardio & Turf', name: 'Treadmill', de: 'Laufband · Matrix', widthM: 0.91, depthM: 2.15 },
+        { code: 'C-ONYX', series: 'Cardio & Turf', name: 'ClimbMill (Stair Climber)', de: 'Treppensteiger · ClimbMill', widthM: 0.85, depthM: 1.65 },
+        { code: 'ROWER', series: 'Cardio & Turf', name: 'Rowing Ergometer', de: 'Rudergerät', widthM: 0.61, depthM: 2.44 },
+        { code: 'U-ONYX', series: 'Cardio & Turf', name: 'Stationary Bike', de: 'Fahrrad-Ergometer', widthM: 0.65, depthM: 1.10 },
+        { code: 'E-ONYX', series: 'Cardio & Turf', name: 'Elliptical / Ascent Trainer', de: 'Crosstrainer', widthM: 0.88, depthM: 1.95 },
+        { code: 'TURF-MAT', series: 'Cardio & Turf', name: 'Stretching / Core Mat', de: 'Mattenbereich', widthM: 1.00, depthM: 1.80 },
+      ];
+
+      const BASELINE_ROOM = {
+        width: 28.0,
+        height: 18.0,
+        sec1W: 10.4,
+        eastStepIn: 1.0,
+        sec1D: 17.2,
+        westStepY: 9.9,
+        westStepIn: 0.8,
+        mirrorJogY: 8.4,
+        sec2OpenY: 12.4,
+      };
+
+      const BASELINE_ITEMS = [
+        // Section 1 Coached Stations (Verified in PXL_20261125_*.jpg)
+        { id: 'm_smith_incline', label: 'Smith Press', matrixCode: 'MG-PL62', kind: 'sec1', x: 2.2, y: 4.9, w: 2.31, d: 1.11, rot: 90, note: '' },
+        { id: 'm_leg_press', label: '45° Leg Press', matrixCode: 'MG-PL70', kind: 'sec1', x: 2.3, y: 8.3, w: 1.71, d: 2.29, rot: 90, note: '' },
+        { id: 'm_calf', label: 'Standing Calf', matrixCode: 'MG-PL76', kind: 'sec1', x: 3.1, y: 16.2, w: 0.89, d: 1.38, rot: 90, note: '' },
+        { id: 'm_low_row', label: 'Low Cable Row', matrixCode: 'MG-5STACK', kind: 'sec1', x: 4.8, y: 9.8, w: 0.90, d: 2.00, rot: 270, note: '' },
+        { id: 'm_lat_pull', label: 'Lat Pull (Wide)', matrixCode: 'MG-5STACK', kind: 'sec1', x: 8.2, y: 9.3, w: 1.05, d: 1.05, rot: 270, note: '' },
+        { id: 'm_pullup', label: 'Lat Pull (V-Grip)', matrixCode: 'MG-5STACK', kind: 'sec1', x: 8.2, y: 10.6, w: 1.05, d: 1.05, rot: 270, note: '' },
+        { id: 'm_cable_pull', label: 'Crossover #15–16', matrixCode: 'MG-924', kind: 'sec1', x: 6.8, y: 13.6, w: 1.10, d: 0.95, rot: 0, note: '' },
+
+        // Section 1 Verified Racks, Benches, Seated Calf & South-Seam Consoles
+        { id: 'fx_hyper', label: '45° Back Ext', matrixCode: 'MG-A52', kind: 'fixture', x: 1.9, y: 1.9, w: 0.76, d: 1.34, rot: 90, note: '' },
+        { id: 'fx_rack', label: 'MEGA Power Rack', matrixCode: 'MG-MR47', kind: 'fixture', x: 4.6, y: 2.0, w: 2.07, d: 2.06, rot: 180, note: '' },
+        { id: 'fx_bb_tree', label: 'Barbell Rack', matrixCode: 'MG-A98', kind: 'fixture', x: 4.3, y: 4.3, w: 1.52, d: 0.85, rot: 180, note: '' },
+        { id: 'fx_flat_bench', label: 'Olympic Flat Bench', matrixCode: 'MG-A78', kind: 'fixture', x: 9.0, y: 3.1, w: 1.28, d: 1.73, rot: 270, note: '' },
+        { id: 'fx_preacher', label: 'Scott Preacher', matrixCode: 'MG-A62', kind: 'fixture', x: 6.7, y: 4.5, w: 0.94, d: 1.22, rot: 90, note: '' },
+        { id: 'fx_db_b1', label: 'Adj Bench 1', matrixCode: 'MG-A85', kind: 'fixture', x: 6.0, y: 5.9, w: 0.75, d: 1.35, rot: 90, note: '' },
+        { id: 'fx_db_b2', label: 'Adj Bench 2', matrixCode: 'MG-A85', kind: 'fixture', x: 6.4, y: 7.4, w: 0.75, d: 1.35, rot: 90, note: '' },
+        { id: 'fx_db_rack', label: '3-Tier Dumbbells', matrixCode: 'MG-A538', kind: 'fixture', x: 9.8, y: 6.2, w: 4.10, d: 0.85, rot: 270, note: '' },
+        { id: 'fx_pl_press', label: 'Vertical Press', matrixCode: 'MG-PL12', kind: 'fixture', x: 2.7, y: 11.7, w: 1.69, d: 1.47, rot: 90, note: '' },
+        { id: 'fx_inc_bb', label: 'Incline Barbell', matrixCode: 'MG-A79', kind: 'fixture', x: 3.1, y: 14.2, w: 1.28, d: 1.75, rot: 90, note: '' },
+        { id: 'fx_ghd', label: 'GHD Bench', matrixCode: 'MG-A96', kind: 'fixture', x: 5.6, y: 16.2, w: 0.85, d: 1.73, rot: 0, note: '' },
+        { id: 'fx_4stack', label: '4-Stack Core', matrixCode: 'MG-5STACK', kind: 'fixture', x: 6.8, y: 9.8, w: 1.35, d: 1.35, rot: 0, note: '' },
+        { id: 'fx_seated_calf', label: 'Seated Calf', matrixCode: 'MG-PL77', kind: 'fixture', x: 8.1, y: 14.3, w: 0.76, d: 1.45, rot: 290, note: '' },
+        { id: 'fx_glute_kick', label: 'Ultra Glute', matrixCode: 'G7-S78', kind: 'fixture', x: 9.1, y: 16.2, w: 0.90, d: 1.32, rot: 0, note: '' },
+        { id: 'fx_ultra_col', label: 'Hip Adductor', matrixCode: 'G7-S74', kind: 'fixture', x: 10.4, y: 13.5, w: 1.40, d: 1.50, rot: 90, note: '' },
+        { id: 'fx_hip_abd', label: 'Hip Abductor', matrixCode: 'G7-S75', kind: 'fixture', x: 12.6, y: 15.9, w: 1.73, d: 1.82, rot: 0, note: '' },
+
+        // Section 2 & Cardio Stations (Awaiting Section 2 Photos)
+        { id: 'm_leg_curl', label: 'Leg Curl', matrixCode: 'G7-S72', kind: 'sec2', x: 15.0, y: 15.6, w: 1.17, d: 1.49, rot: 0, note: '' },
+        { id: 'm_butterfly', label: 'Butterfly', matrixCode: 'G7-S22', kind: 'sec2', x: 17.8, y: 9.6, w: 1.74, d: 1.44, rot: 270, note: '' },
+        { id: 'm_chest_press', label: 'Chest Press', matrixCode: 'G7-S13', kind: 'sec2', x: 17.8, y: 11.8, w: 1.41, d: 1.40, rot: 270, note: '' },
+        { id: 'm_leg_ext', label: 'Leg Ext', matrixCode: 'G7-S71', kind: 'sec2', x: 17.8, y: 15.6, w: 1.26, d: 1.22, rot: 0, note: '' },
+        { id: 'm_hip_thrust', label: 'Hip Thrust', matrixCode: 'MG-PL78', kind: 'sec2', x: 21.6, y: 15.2, w: 1.33, d: 1.68, rot: 0, note: '' },
+        { id: 'm_abs_mat', label: 'Mat Core', matrixCode: 'TURF-MAT', kind: 'sec2', x: 21.6, y: 7.6, w: 1.00, d: 1.80, rot: 0, note: '' },
+        { id: 'm_ab_crunch', label: 'Ab Crunch', matrixCode: 'G7-S51', kind: 'sec2', x: 25.2, y: 7.6, w: 1.21, d: 1.39, rot: 270, note: '' },
+        { id: 'm_lower_back', label: 'Back Ext', matrixCode: 'G7-S52', kind: 'sec2', x: 25.2, y: 11.8, w: 1.20, d: 1.28, rot: 270, note: '' },
+        { id: 'c_treadmill', label: 'Treadmill', matrixCode: 'T-ONYX', kind: 'sec2', x: 18.2, y: 3.4, w: 0.91, d: 2.15, rot: 0, note: '' },
+        { id: 'c_climbmill', label: 'ClimbMill', matrixCode: 'C-ONYX', kind: 'sec2', x: 20.8, y: 3.4, w: 0.85, d: 1.65, rot: 0, note: '' },
+        { id: 'c_rower', label: 'Rower', matrixCode: 'ROWER', kind: 'sec2', x: 23.4, y: 3.4, w: 0.61, d: 2.44, rot: 0, note: '' },
+        { id: 'c_bike', label: 'Bike', matrixCode: 'U-ONYX', kind: 'sec2', x: 25.8, y: 3.4, w: 0.65, d: 1.10, rot: 0, note: '' },
+      ];
+
+      const PILLARS = [
+        { x: 0.85, y: 3.15, w: 0.5, h: 0.5 },
+        { x: 0.85, y: 6.35, w: 0.5, h: 0.5 },
+        { x: 9.35, y: 0.85, w: 0.5, h: 0.5 },
+        { x: 6.95, y: 16.65, w: 0.5, h: 0.5 },
+        { x: 9.10, y: 11.95, w: 0.65, h: 0.65 },
+      ];
+
+      const PHOTO_RAYS = [
+        { n: '1', x: 5.3, y: 7.4, tx: 5.8, ty: 2.5 },
+        { n: '2', x: 5.2, y: 8.0, tx: 2.4, ty: 7.9 },
+        { n: '3', x: 5.1, y: 8.8, tx: 3.6, ty: 13.8 },
+        { n: '4', x: 6.8, y: 7.2, tx: 6.8, ty: 10.9 },
+        { n: '5', x: 7.6, y: 7.4, tx: 7.3, ty: 11.6 },
+        { n: '6', x: 5.7, y: 7.7, tx: 7.5, ty: 12.0 },
+        { n: '7', x: 8.6, y: 13.1, tx: 5.3, ty: 13.0 },
+        { n: '8', x: 8.3, y: 11.8, tx: 6.4, ty: 6.5 },
+        { n: '9', x: 8.2, y: 12.7, tx: 3.5, ty: 11.7 },
+      ];
+
+      const STORAGE_KEY = 'manegg_floor_studio_v3';
+      const PX_PER_M = 38;
+      const PAD = 28;
+
+      function clone(v) { return JSON.parse(JSON.stringify(v)); }
+
+      let state = loadStudioState();
+      let viewMode = 'sec1';
+      let showRays = false;
+      let activeTab = 'machine';
+      let selectedId = 'fx_seated_calf';
+      let dragInfo = null;
+      let catalogQuery = '';
+
+      function loadStudioState() {
+        try {
+          const raw = window.localStorage && window.localStorage.getItem(STORAGE_KEY);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed && Array.isArray(parsed.items) && parsed.room) {
+              parsed.room = Object.assign(clone(BASELINE_ROOM), parsed.room);
+              return parsed;
+            }
+          }
+        } catch (e) {}
+        return { room: clone(BASELINE_ROOM), items: clone(BASELINE_ITEMS) };
+      }
+
+      function saveStudioState() {
+        try {
+          if (window.localStorage) {
+            window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+          }
+        } catch (e) {}
+      }
+
+      function getModel(code) {
+        return MATRIX_CATALOG.find(function (m) { return m.code === code; }) || null;
+      }
+
+      function showToast(msg) {
+        const el = document.getElementById('toast');
+        el.textContent = msg;
+        el.classList.add('is-visible');
+        clearTimeout(showToast._t);
+        showToast._t = setTimeout(function () { el.classList.remove('is-visible'); }, 2200);
+      }
+
+      function effectiveBox(item) {
+        const rad = ((item.rot || 0) * Math.PI) / 180;
+        const c = Math.abs(Math.cos(rad));
+        const s = Math.abs(Math.sin(rad));
+        const bw = item.w * c + item.d * s;
+        const bh = item.w * s + item.d * c;
+        return { x1: item.x - bw / 2, y1: item.y - bh / 2, x2: item.x + bw / 2, y2: item.y + bh / 2 };
+      }
+
+      function findOverlaps(items) {
+        const colliding = new Set();
+        const stackGroup = new Set(['fx_4stack', 'm_low_row', 'm_lat_pull', 'm_pullup']);
+        for (let i = 0; i < items.length; i++) {
+          const a = items[i];
+          const ba = effectiveBox(a);
+          for (let j = i + 1; j < items.length; j++) {
+            const b = items[j];
+            if (stackGroup.has(a.id) && stackGroup.has(b.id)) continue;
+            const bb = effectiveBox(b);
+            const ox = Math.min(ba.x2, bb.x2) - Math.max(ba.x1, bb.x1);
+            const oy = Math.min(ba.y2, bb.y2) - Math.max(ba.y1, bb.y1);
+            if (ox > 0.12 && oy > 0.12) {
+              colliding.add(a.id);
+              colliding.add(b.id);
+            }
+          }
+        }
+        return colliding;
+      }
+
+      function computeDiffMarkdown() {
+        const lines = [];
+        const r = state.room;
+        const br = BASELINE_ROOM;
+        const rDiffs = [];
+        const roomFields = [
+          ['sec1W', 'Sec 1 Width'],
+          ['eastStepIn', 'East Mirror Step In'],
+          ['mirrorJogY', 'East Mirror Step Y'],
+          ['sec2OpenY', 'Sec 2 Opening Y'],
+          ['westStepY', 'West Step Y'],
+          ['westStepIn', 'West Step In'],
+          ['sec1D', 'Sec 1 Depth'],
+          ['width', 'Total Width'],
+        ];
+        for (let i = 0; i < roomFields.length; i++) {
+          const k = roomFields[i][0];
+          const label = roomFields[i][1];
+          if (Math.abs(Number(r[k]) - Number(br[k])) >= 0.05) {
+            rDiffs.push(label + ': ' + br[k] + 'm -> ' + r[k] + 'm');
+          }
+        }
+        if (rDiffs.length) {
+          lines.push('- **Room / Walls**: ' + rDiffs.join(' · '));
+        }
+
+        const baseMap = new Map(BASELINE_ITEMS.map(function (i) { return [i.id, i]; }));
+        const curIds = new Set(state.items.map(function (i) { return i.id; }));
+
+        BASELINE_ITEMS.forEach(function (b) {
+          if (!curIds.has(b.id)) {
+            lines.push('- **Removed** `' + b.id + '` (' + b.label + ' · ' + b.matrixCode + ')');
+          }
+        });
+
+        state.items.forEach(function (it) {
+          const b = baseMap.get(it.id);
+          if (!b) {
+            const mod = getModel(it.matrixCode);
+            lines.push('- **Added** `' + it.id + '` (' + it.label + '): Matrix `' + it.matrixCode + '` (' + (mod ? mod.name : '') + ') at (' + it.x + ', ' + it.y + ')m, facing ' + it.rot + '°' + (it.note ? ' — "' + it.note + '"' : ''));
+            return;
+          }
+          const parts = [];
+          if (Math.abs(it.x - b.x) >= 0.05 || Math.abs(it.y - b.y) >= 0.05) {
+            parts.push('pos (' + b.x + ', ' + b.y + ')m -> (' + it.x + ', ' + it.y + ')m');
+          }
+          if (it.matrixCode !== b.matrixCode) {
+            const mod = getModel(it.matrixCode);
+            parts.push('Matrix ' + b.matrixCode + ' -> ' + it.matrixCode + (mod ? ' (' + mod.name + ')' : ''));
+          }
+          if ((((it.rot || 0) % 360) + 360) % 360 !== (((b.rot || 0) % 360) + 360) % 360) {
+            parts.push('facing ' + b.rot + '° -> ' + it.rot + '°');
+          }
+          if (it.label !== b.label) {
+            parts.push('label "' + b.label + '" -> "' + it.label + '"');
+          }
+          if (Math.abs(it.w - b.w) >= 0.05 || Math.abs(it.d - b.d) >= 0.05) {
+            parts.push('size ' + b.w + '×' + b.d + 'm -> ' + it.w + '×' + it.d + 'm');
+          }
+          if (it.note && it.note.trim()) {
+            parts.push('note: "' + it.note.trim() + '"');
+          }
+          if (parts.length) {
+            lines.push('- **' + it.label + '** (`' + it.id + '`): ' + parts.join(' · '));
+          }
+        });
+
+        return {
+          count: lines.length,
+          markdown: lines.length
+            ? '### Proposed Manegg Motion Floor Plan Updates\n' + lines.join('\n')
+            : '# No changes proposed yet — drag any station, swap its Matrix model, or resize a wall!',
+        };
+      }
+
+      function esc(s) {
+        return String(s == null ? '' : s)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      }
+
+      function renderSvg() {
+        const svg = document.getElementById('blueprint-svg');
+        const r = state.room;
+        const visW = viewMode === 'sec1' ? Math.min(r.width, Math.max(16.0, r.sec1W + 5.6)) : r.width;
+        const visH = r.height;
+
+        const svgW = Math.round(PAD * 2 + visW * PX_PER_M);
+        const svgH = Math.round(PAD * 2 + visH * PX_PER_M);
+        svg.setAttribute('viewBox', '0 0 ' + svgW + ' ' + svgH);
+
+        const mx = function (m) { return PAD + m * PX_PER_M; };
+        const my = function (m) { return PAD + m * PX_PER_M; };
+
+        let gridSvg = '';
+        for (let gx = 0; gx <= Math.floor(visW); gx++) {
+          const px = mx(gx);
+          const major = gx % 2 === 0;
+          gridSvg += '<line x1="' + px + '" y1="' + PAD + '" x2="' + px + '" y2="' + (svgH - PAD) + '" stroke="currentColor" stroke-opacity="' + (major ? 0.12 : 0.05) + '" stroke-width="1" />';
+          if (major) {
+            gridSvg += '<text x="' + px + '" y="' + (PAD - 8) + '" text-anchor="middle" fill="currentColor" fill-opacity="0.52" font-size="10" font-family="monospace">' + gx + 'm</text>';
+          }
+        }
+        for (let gy = 0; gy <= Math.floor(visH); gy++) {
+          const py = my(gy);
+          const major = gy % 2 === 0;
+          gridSvg += '<line x1="' + PAD + '" y1="' + py + '" x2="' + (svgW - PAD) + '" y2="' + py + '" stroke="currentColor" stroke-opacity="' + (major ? 0.12 : 0.05) + '" stroke-width="1" />';
+          if (major) {
+            gridSvg += '<text x="' + (PAD - 6) + '" y="' + (py + 3) + '" text-anchor="end" fill="currentColor" fill-opacity="0.52" font-size="10" font-family="monospace">' + gy + 'm</text>';
+          }
+        }
+
+        const s1W = r.sec1W;
+        const s1D = r.sec1D;
+        const eastInX = Math.max(6.0, s1W - (Number(r.eastStepIn) || 0));
+        const sec2Start = Math.min(r.width - 2, s1W + 4.4);
+        const westIn = 0.8 + r.westStepIn;
+
+        const sec1Pts = [
+          [0.8, 0.8], [s1W, 0.8],
+          [s1W, r.mirrorJogY], [eastInX, r.mirrorJogY], [eastInX, r.sec2OpenY],
+          [sec2Start, r.sec2OpenY], [sec2Start, s1D], [westIn, s1D],
+          [westIn, r.westStepY], [0.8, r.westStepY],
+        ].map(function (pt) { return mx(pt[0]).toFixed(1) + ',' + my(pt[1]).toFixed(1); }).join(' ');
+
+        const corePts = [
+          [s1W, 0.8], [sec2Start, 0.8], [sec2Start, r.sec2OpenY],
+          [eastInX, r.sec2OpenY], [eastInX, r.mirrorJogY], [s1W, r.mirrorJogY],
+        ].map(function (pt) { return mx(pt[0]).toFixed(1) + ',' + my(pt[1]).toFixed(1); }).join(' ');
+
+        const sec2BoxW = Math.max(1, r.width - (sec2Start + 0.3) - 0.6);
+
+        let archSvg = ''
+          + '<polygon points="' + sec1Pts + '" fill="currentColor" fill-opacity="0.045" />'
+          + '<polygon points="' + corePts + '" fill="currentColor" fill-opacity="0.09" stroke="currentColor" stroke-opacity="0.3" stroke-width="1.5" />'
+          + (viewMode === 'full' ? '<rect x="' + mx(sec2Start + 0.3) + '" y="' + my(0.8) + '" width="' + (sec2BoxW * PX_PER_M) + '" height="' + ((s1D - 0.8) * PX_PER_M) + '" rx="8" fill="currentColor" fill-opacity="0.02" stroke="currentColor" stroke-opacity="0.25" stroke-dasharray="6 4" />' : '')
+          + '<polyline points="' + mx(s1W) + ',' + my(0.8) + ' ' + mx(0.8) + ',' + my(0.8) + ' ' + mx(0.8) + ',' + my(r.westStepY) + ' ' + mx(westIn) + ',' + my(r.westStepY) + ' ' + mx(westIn) + ',' + my(s1D) + ' ' + mx(sec2Start) + ',' + my(s1D) + '" fill="none" stroke="currentColor" stroke-opacity="0.74" stroke-width="4" stroke-linejoin="miter" />'
+          + '<polyline points="' + mx(s1W) + ',' + my(0.8) + ' ' + mx(s1W) + ',' + my(r.mirrorJogY) + ' ' + mx(eastInX) + ',' + my(r.mirrorJogY) + ' ' + mx(eastInX) + ',' + my(r.sec2OpenY) + '" fill="none" stroke="currentColor" stroke-opacity="0.74" stroke-width="4" />'
+          + '<line x1="' + mx(s1W - 0.14) + '" y1="' + my(1.4) + '" x2="' + mx(s1W - 0.14) + '" y2="' + my(r.mirrorJogY - 0.15) + '" stroke="#38bdf8" stroke-width="2.5" stroke-dasharray="6 3" />'
+          + '<line x1="' + mx(eastInX - 0.14) + '" y1="' + my(r.mirrorJogY + 0.2) + '" x2="' + mx(eastInX - 0.14) + '" y2="' + my(r.sec2OpenY - 0.45) + '" stroke="#38bdf8" stroke-width="2.5" stroke-dasharray="6 3" />'
+          + '<line x1="' + mx(0.8) + '" y1="' + my(1.3) + '" x2="' + mx(0.8) + '" y2="' + my(2.95) + '" stroke="#2dd4bf" stroke-width="5" />'
+          + '<line x1="' + mx(0.8) + '" y1="' + my(3.7) + '" x2="' + mx(0.8) + '" y2="' + my(6.15) + '" stroke="#2dd4bf" stroke-width="5" />'
+          + '<line x1="' + mx(0.8) + '" y1="' + my(6.95) + '" x2="' + mx(0.8) + '" y2="' + my(r.westStepY - 0.25) + '" stroke="#2dd4bf" stroke-width="5" />'
+          + '<line x1="' + mx(westIn) + '" y1="' + my(r.westStepY + 0.35) + '" x2="' + mx(westIn) + '" y2="' + my(13.2) + '" stroke="#2dd4bf" stroke-width="5" />'
+          + '<line x1="' + mx(2.2) + '" y1="' + my(s1D) + '" x2="' + mx(4.3) + '" y2="' + my(s1D) + '" stroke="#2dd4bf" stroke-width="5" />'
+          + '<line x1="' + mx(4.7) + '" y1="' + my(s1D) + '" x2="' + mx(6.75) + '" y2="' + my(s1D) + '" stroke="#2dd4bf" stroke-width="5" />'
+          + '<line x1="' + mx(7.55) + '" y1="' + my(s1D) + '" x2="' + mx(10.2) + '" y2="' + my(s1D) + '" stroke="#2dd4bf" stroke-width="5" />'
+          + '<line x1="' + mx(10.7) + '" y1="' + my(s1D) + '" x2="' + mx(sec2Start - 0.2) + '" y2="' + my(s1D) + '" stroke="#2dd4bf" stroke-width="5" />'
+          + '<line x1="' + mx(1.6) + '" y1="' + my(0.8) + '" x2="' + mx(2.5) + '" y2="' + my(0.8) + '" stroke="#f59e0b" stroke-width="5" stroke-linecap="round" />'
+          + '<line x1="' + mx(6.2) + '" y1="' + my(0.8) + '" x2="' + mx(7.1) + '" y2="' + my(0.8) + '" stroke="#f59e0b" stroke-width="5" stroke-linecap="round" />'
+          + '<line x1="' + mx(7.7) + '" y1="' + my(0.8) + '" x2="' + mx(8.6) + '" y2="' + my(0.8) + '" stroke="#f59e0b" stroke-width="5" stroke-linecap="round" />'
+          + '<line x1="' + mx(westIn) + '" y1="' + my(14.9) + '" x2="' + mx(westIn) + '" y2="' + my(16.9) + '" stroke="#f59e0b" stroke-width="5" stroke-linecap="round" />'
+          + PILLARS.map(function (p) {
+              return '<rect x="' + mx(p.x) + '" y="' + my(p.y) + '" width="' + (p.w * PX_PER_M) + '" height="' + (p.h * PX_PER_M) + '" rx="2" fill="currentColor" fill-opacity="0.45" />';
+            }).join('')
+          + '<line x1="' + mx(6.8) + '" y1="' + my(10.45) + '" x2="' + mx(6.8) + '" y2="' + my(13.6) + '" stroke="currentColor" stroke-opacity="0.45" stroke-width="3.5" />'
+          + '<text x="' + mx(7.4) + '" y="' + my(1.38) + '" text-anchor="middle" fill="currentColor" fill-opacity="0.55" font-size="10" font-weight="700">WC Doors</text>'
+          + '<text x="' + mx((s1W + sec2Start) / 2 + 0.35) + '" y="' + my(6.2) + '" text-anchor="middle" fill="currentColor" fill-opacity="0.45" font-size="10.5" font-weight="700">Building Core / Mirrors</text>'
+          + '<text x="' + mx(eastInX + 2.4) + '" y="' + my(r.sec2OpenY + 0.55) + '" text-anchor="middle" fill="currentColor" fill-opacity="0.55" font-size="11" font-weight="700">Wide Opening to Sec 2 →</text>';
+
+        const overlaps = findOverlaps(state.items);
+        const overlapEl = document.getElementById('overlap-status');
+        if (overlaps.size > 0) {
+          overlapEl.textContent = '⚠ ' + overlaps.size + ' overlapping footprints';
+          overlapEl.className = 'status-warn';
+        } else {
+          overlapEl.textContent = '✓ Clearances OK';
+          overlapEl.className = 'status-ok';
+        }
+
+        const visibleItems = state.items.filter(function (it) {
+          return viewMode === 'full' || it.x <= visW + 0.5;
+        });
+
+        const itemsSvg = visibleItems.map(function (it) {
+          const cx = mx(it.x);
+          const cy = my(it.y);
+          const pw = it.w * PX_PER_M;
+          const pd = it.d * PX_PER_M;
+          const isSel = it.id === selectedId;
+          const isCol = overlaps.has(it.id);
+
+          let fill = 'rgba(245, 158, 11, 0.24)';
+          let stroke = '#f59e0b';
+          let dash = '';
+          if (it.kind === 'fixture') {
+            fill = 'rgba(56, 189, 248, 0.16)';
+            stroke = '#38bdf8';
+          } else if (it.kind === 'sec2') {
+            fill = 'rgba(167, 139, 250, 0.16)';
+            stroke = '#a78bfa';
+            dash = '5 3';
+          }
+          if (isCol) {
+            fill = 'rgba(244, 63, 94, 0.28)';
+            stroke = '#f43f5e';
+          }
+
+          const arrowY = -pd / 2 + 7;
+          return ''
+            + '<g class="mach-node" data-item-id="' + esc(it.id) + '" transform="translate(' + cx.toFixed(1) + ' ' + cy.toFixed(1) + ')">'
+            + '<g transform="rotate(' + (it.rot || 0) + ')">'
+            + (isSel ? '<rect x="' + (-pw / 2 - 4).toFixed(1) + '" y="' + (-pd / 2 - 4).toFixed(1) + '" width="' + (pw + 8).toFixed(1) + '" height="' + (pd + 8).toFixed(1) + '" rx="6" fill="none" stroke="#f59e0b" stroke-width="2.2" stroke-dasharray="4 2" />' : '')
+            + '<rect x="' + (-pw / 2).toFixed(1) + '" y="' + (-pd / 2).toFixed(1) + '" width="' + pw.toFixed(1) + '" height="' + pd.toFixed(1) + '" rx="4" fill="' + fill + '" stroke="' + stroke + '" stroke-width="' + (isSel ? 2.4 : 1.5) + '" ' + (dash ? 'stroke-dasharray="' + dash + '"' : '') + ' />'
+            + '<polygon points="0,' + (arrowY - 5) + ' -5,' + (arrowY + 2) + ' 5,' + (arrowY + 2) + '" fill="' + stroke + '" />'
+            + '</g>'
+            + '<text x="0" y="-2" text-anchor="middle" fill="currentColor" font-size="9.5" font-weight="700" pointer-events="none">' + esc(it.label) + '</text>'
+            + '<text x="0" y="9" text-anchor="middle" fill="currentColor" fill-opacity="0.68" font-size="8" font-family="monospace" pointer-events="none">' + esc(it.matrixCode) + '</text>'
+            + '</g>';
+        }).join('');
+
+        const raysSvg = showRays
+          ? PHOTO_RAYS.map(function (c) {
+              return '<g pointer-events="none">'
+                + '<line x1="' + mx(c.x).toFixed(1) + '" y1="' + my(c.y).toFixed(1) + '" x2="' + mx(c.tx).toFixed(1) + '" y2="' + my(c.ty).toFixed(1) + '" stroke="#f59e0b" stroke-width="2" stroke-dasharray="4 3" />'
+                + '<circle cx="' + mx(c.x).toFixed(1) + '" cy="' + my(c.y).toFixed(1) + '" r="9" fill="#f59e0b" />'
+                + '<text x="' + mx(c.x).toFixed(1) + '" y="' + (my(c.y) + 3.5).toFixed(1) + '" text-anchor="middle" fill="#111317" font-size="10" font-weight="800">' + c.n + '</text>'
+                + '</g>';
+            }).join('')
+          : '';
+
+        svg.innerHTML = gridSvg + archSvg + itemsSvg + raysSvg;
+      }
+
+      function syncHeaderAndDiff() {
+        const diff = computeDiffMarkdown();
+        const badge = document.getElementById('change-badge');
+        if (diff.count > 0) {
+          badge.textContent = diff.count + ' proposed ' + (diff.count === 1 ? 'change' : 'changes');
+          badge.className = 'badge is-dirty';
+        } else {
+          badge.textContent = 'Baseline (0 edits)';
+          badge.className = 'badge';
+        }
+        document.getElementById('diff-output').value = diff.markdown;
+
+        document.getElementById('view-sec1-btn').classList.toggle('is-active', viewMode === 'sec1');
+        document.getElementById('view-full-btn').classList.toggle('is-active', viewMode === 'full');
+        document.getElementById('rays-btn').className = showRays ? 'btn btn-primary' : 'btn';
+
+        document.querySelectorAll('.tab-btn').forEach(function (b) {
+          b.classList.toggle('is-active', b.dataset.tab === activeTab);
+        });
+        document.getElementById('panel-machine').classList.toggle('is-hidden', activeTab !== 'machine');
+        document.getElementById('panel-room').classList.toggle('is-hidden', activeTab !== 'room');
+        document.getElementById('panel-diff').classList.toggle('is-hidden', activeTab !== 'diff');
+      }
+
+      function syncInspector() {
+        const itemSelect = document.getElementById('item-select');
+        if (!state.items.some(function (i) { return i.id === selectedId; }) && state.items.length) {
+          selectedId = state.items[0].id;
+        }
+        itemSelect.innerHTML = state.items
+          .map(function (it) {
+            return '<option value="' + esc(it.id) + '" ' + (it.id === selectedId ? 'selected' : '') + '>[' + it.kind.toUpperCase() + '] ' + esc(it.label) + ' · ' + esc(it.matrixCode) + ' (' + it.x + ', ' + it.y + 'm)</option>';
+          })
+          .join('');
+
+        const cur = state.items.find(function (i) { return i.id === selectedId; });
+        if (!cur) return;
+
+        document.getElementById('in-label').value = cur.label;
+        document.getElementById('in-mapped').value = cur.kind;
+        document.getElementById('in-x').value = cur.x;
+        document.getElementById('in-y').value = cur.y;
+        document.getElementById('in-rot').value = cur.rot || 0;
+        document.getElementById('in-w').value = cur.w;
+        document.getElementById('in-d').value = cur.d;
+        document.getElementById('in-note').value = cur.note || '';
+
+        const q = catalogQuery.trim().toLowerCase();
+        const filtered = MATRIX_CATALOG.filter(function (m) {
+          return !q || m.code.toLowerCase().includes(q) || m.name.toLowerCase().includes(q) || m.de.toLowerCase().includes(q) || m.series.toLowerCase().includes(q);
+        });
+        const catSel = document.getElementById('catalog-select');
+        catSel.innerHTML = filtered
+          .map(function (m) {
+            return '<option value="' + esc(m.code) + '" ' + (m.code === cur.matrixCode ? 'selected' : '') + '>' + esc(m.code.padEnd(9)) + ' ' + esc(m.name) + ' (' + m.widthM + '×' + m.depthM + 'm)</option>';
+          })
+          .join('');
+
+        const mod = getModel(cur.matrixCode);
+        document.getElementById('spec-pill').textContent = mod ? mod.code + ' · ' + mod.widthM + '×' + mod.depthM + 'm' : cur.matrixCode;
+        document.getElementById('model-detail').textContent = mod
+          ? mod.series + ' · DE: "' + mod.de + '" · ' + (mod.tareKg ? 'Starting resistance: ' + mod.tareKg + ' kg' : mod.stackKg ? 'Weight stack: ' + mod.stackKg + ' kg' : 'Standard station')
+          : 'Custom footprint';
+
+        const base = BASELINE_ITEMS.find(function (b) { return b.id === cur.id; });
+        document.getElementById('item-delta-hint').textContent = base
+          ? 'Baseline: (' + base.x + ', ' + base.y + ')m · ' + base.matrixCode
+          : 'Newly added station';
+
+        Object.keys(BASELINE_ROOM).forEach(function (k) {
+          const el = document.getElementById('rm-' + k);
+          if (el) el.value = state.room[k];
+        });
+      }
+
+      function renderAll() {
+        renderSvg();
+        syncHeaderAndDiff();
+        syncInspector();
+      }
+
+      const svgEl = document.getElementById('blueprint-svg');
+      function clientToMeters(e) {
+        const rect = svgEl.getBoundingClientRect();
+        const vb = svgEl.viewBox.baseVal;
+        const sx = ((e.clientX - rect.left) / (rect.width || 1)) * vb.width;
+        const sy = ((e.clientY - rect.top) / (rect.height || 1)) * vb.height;
+        return {
+          x: Math.round(((sx - PAD) / PX_PER_M) * 10) / 10,
+          y: Math.round(((sy - PAD) / PX_PER_M) * 10) / 10,
+        };
+      }
+
+      svgEl.addEventListener('pointerdown', function (e) {
+        const node = e.target.closest('[data-item-id]');
+        if (!node) return;
+        const id = node.dataset.itemId;
+        selectedId = id;
+        const cur = state.items.find(function (i) { return i.id === id; });
+        if (!cur) return;
+        const pt = clientToMeters(e);
+        dragInfo = { id: id, dx: cur.x - pt.x, dy: cur.y - pt.y };
+        if (node.setPointerCapture) {
+          try { node.setPointerCapture(e.pointerId); } catch (err) {}
+        }
+        renderAll();
+      });
+
+      svgEl.addEventListener('pointermove', function (e) {
+        const pt = clientToMeters(e);
+        document.getElementById('cursor-coords').textContent = 'X: ' + pt.x.toFixed(1) + ' m · Y: ' + pt.y.toFixed(1) + ' m';
+        if (!dragInfo) return;
+        const cur = state.items.find(function (i) { return i.id === dragInfo.id; });
+        if (!cur) return;
+        cur.x = Math.max(0.5, Math.min(state.room.width - 0.5, Math.round((pt.x + dragInfo.dx) * 10) / 10));
+        cur.y = Math.max(0.5, Math.min(state.room.height - 0.5, Math.round((pt.y + dragInfo.dy) * 10) / 10));
+        renderSvg();
+        syncHeaderAndDiff();
+        document.getElementById('in-x').value = cur.x;
+        document.getElementById('in-y').value = cur.y;
+      });
+
+      window.addEventListener('pointerup', function () {
+        if (dragInfo) {
+          dragInfo = null;
+          saveStudioState();
+          syncInspector();
+        }
+      });
+
+      document.querySelectorAll('.tab-btn').forEach(function (b) {
+        b.addEventListener('click', function () {
+          activeTab = b.dataset.tab;
+          syncHeaderAndDiff();
+        });
+      });
+
+      document.getElementById('view-sec1-btn').addEventListener('click', function () { viewMode = 'sec1'; renderAll(); });
+      document.getElementById('view-full-btn').addEventListener('click', function () { viewMode = 'full'; renderAll(); });
+      document.getElementById('rays-btn').addEventListener('click', function () { showRays = !showRays; renderAll(); });
+      document.getElementById('theme-btn').addEventListener('click', function () {
+        const cur = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-theme', cur);
+      });
+
+      document.getElementById('item-select').addEventListener('change', function (e) {
+        selectedId = e.target.value;
+        if (viewMode === 'sec1') {
+          const cur = state.items.find(function (i) { return i.id === selectedId; });
+          if (cur && cur.x > 16) viewMode = 'full';
+        }
+        renderAll();
+      });
+
+      document.getElementById('catalog-search').addEventListener('input', function (e) {
+        catalogQuery = e.target.value;
+        syncInspector();
+      });
+
+      document.getElementById('catalog-select').addEventListener('change', function (e) {
+        const cur = state.items.find(function (i) { return i.id === selectedId; });
+        const mod = getModel(e.target.value);
+        if (!cur || !mod) return;
+        cur.matrixCode = mod.code;
+        cur.w = mod.widthM;
+        cur.d = mod.depthM;
+        if (cur.id.indexOf('custom_') === 0 || cur.id.indexOf('fx_') === 0) {
+          cur.label = mod.name;
+        }
+        saveStudioState();
+        renderAll();
+        showToast('Assigned Matrix ' + mod.code + ' (' + mod.widthM + '×' + mod.depthM + 'm)');
+      });
+
+      [
+        ['in-label', 'label', false],
+        ['in-mapped', 'kind', false],
+        ['in-x', 'x', true],
+        ['in-y', 'y', true],
+        ['in-rot', 'rot', true],
+        ['in-w', 'w', true],
+        ['in-d', 'd', true],
+        ['in-note', 'note', false],
+      ].forEach(function (spec) {
+        document.getElementById(spec[0]).addEventListener('input', function (e) {
+          const cur = state.items.find(function (i) { return i.id === selectedId; });
+          if (!cur) return;
+          cur[spec[1]] = spec[2] ? (parseFloat(e.target.value) || 0) : e.target.value;
+          saveStudioState();
+          renderSvg();
+          syncHeaderAndDiff();
+        });
+      });
+
+      document.querySelectorAll('.rot-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          const cur = state.items.find(function (i) { return i.id === selectedId; });
+          if (!cur) return;
+          const delta = parseInt(btn.dataset.rot, 10) || 0;
+          cur.rot = (((cur.rot || 0) + delta) % 360 + 360) % 360;
+          saveStudioState();
+          renderAll();
+        });
+      });
+
+      document.querySelectorAll('.rm-input').forEach(function (inp) {
+        inp.addEventListener('input', function () {
+          const key = inp.id.replace('rm-', '');
+          const v = parseFloat(inp.value);
+          if (Number.isFinite(v)) {
+            state.room[key] = v;
+            saveStudioState();
+            renderSvg();
+            syncHeaderAndDiff();
+          }
+        });
+      });
+
+      document.getElementById('add-machine-btn').addEventListener('click', function () {
+        const id = 'custom_' + Date.now().toString(36).slice(-4);
+        const mod = MATRIX_CATALOG[28];
+        const x = viewMode === 'sec1' ? 11.8 : 19.0;
+        state.items.push({
+          id: id,
+          label: mod.name,
+          matrixCode: mod.code,
+          kind: viewMode === 'sec1' ? 'sec1' : 'sec2',
+          x: x,
+          y: 13.5,
+          w: mod.widthM,
+          d: mod.depthM,
+          rot: 0,
+          note: '',
+        });
+        selectedId = id;
+        activeTab = 'machine';
+        saveStudioState();
+        renderAll();
+        showToast('Added new station — drag to position & pick Matrix model');
+      });
+
+      document.getElementById('delete-item-btn').addEventListener('click', function () {
+        if (state.items.length <= 1) return;
+        const idx = state.items.findIndex(function (i) { return i.id === selectedId; });
+        if (idx >= 0) {
+          const removed = state.items.splice(idx, 1)[0];
+          selectedId = state.items[Math.max(0, idx - 1)].id;
+          saveStudioState();
+          renderAll();
+          showToast('Removed ' + removed.label);
+        }
+      });
+
+      document.getElementById('reset-btn').addEventListener('click', function () {
+        state = { room: clone(BASELINE_ROOM), items: clone(BASELINE_ITEMS) };
+        selectedId = state.items[0].id;
+        saveStudioState();
+        renderAll();
+        showToast('Reset to verified baseline');
+      });
+
+      function copyDiff() {
+        const diff = computeDiffMarkdown();
+        const text = diff.markdown;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(function () {
+            showToast('Copied proposed changes — paste in chat!');
+          }).catch(function () {
+            fallbackCopy();
+          });
+        } else {
+          fallbackCopy();
+        }
+      }
+
+      function fallbackCopy() {
+        activeTab = 'diff';
+        syncHeaderAndDiff();
+        const ta = document.getElementById('diff-output');
+        ta.focus();
+        ta.select();
+        try { document.execCommand('copy'); } catch (e) {}
+        showToast('Copied proposed changes — paste in chat!');
+      }
+
+      document.getElementById('copy-diff-btn').addEventListener('click', copyDiff);
+      document.getElementById('copy-diff-btn-2').addEventListener('click', copyDiff);
+
+      renderAll();
+    })();
+  </script>
+</body>
+</html>

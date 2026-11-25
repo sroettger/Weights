@@ -923,10 +923,11 @@ export function renderFloorModalBody(state, session, editPins = false, selectedE
         <span class="spec-tile-sub">${
           editPins ? 'Tap or drag any pin · Pick Matrix model below' : 'Sec 1 Matrix models verified · Sec 2 awaiting photos'
         }</span>
-        <div style="display:flex;gap:6px;">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
           <button type="button" class="btn ${editPins ? 'btn-primary' : 'btn-secondary'} btn-sm" data-action="toggle-floor-edit">
             ${editPins ? 'Done' : 'Edit Layout'}
           </button>
+          <a href="./studio.html" target="_blank" rel="noopener" class="btn btn-secondary btn-sm" style="text-decoration:none;">Studio ↗</a>
           ${
             hasChanges
               ? `<button type="button" class="btn btn-secondary btn-sm" data-action="copy-floor-diff">Copy Diff</button>

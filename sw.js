@@ -1,7 +1,8 @@
-const CACHE_NAME = 'weights-ai-coach-v15';
+const CACHE_NAME = 'weights-ai-coach-v16';
 const ASSETS = [
   './',
   './index.html',
+  './studio.html',
   './manifest.webmanifest',
   './icons/icon.svg',
   './css/styles.css',
